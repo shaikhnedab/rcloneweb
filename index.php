@@ -1,0 +1,18 @@
+<?php
+// Root front-controller: serve SPA shell for all non-file, non-api, non-raw requests
+$uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+$ext = pathinfo($uri, PATHINFO_EXTENSION);
+
+// let real files through (public/*, api/* handled by api/index.php via rewrite)
+if ($ext && $ext !== 'php') {
+    return false; // let nginx/apache try_files handle it; for php -S we 404
+}
+
+// For php built-in server, serve static files directly
+if (php_sapi_name() === 'cli-server') {
+    $file = __DIR__ . $uri;
+    if ($uri !== '/' && file_exists($file) && is_file($file)) return false;
+}
+
+// SPA shell — same as public/index.html but at /
+readfile(__DIR__ . '/public/index.html');

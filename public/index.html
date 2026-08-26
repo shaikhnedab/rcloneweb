@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>rcloneweb — rclone backup script builder</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" />
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
+</head>
+<body>
+
+<!-- ============ AUTH VIEW ============ -->
+<div id="auth-view" class="auth-view hidden">
+  <div class="auth-card">
+    <div class="brand center"><span class="logo">📦</span> rcloneweb</div>
+    <p class="hint center" id="auth-subtitle">rclone backup script builder</p>
+
+    <form id="login-form">
+      <label class="field">Username
+        <input id="auth-user" autocomplete="username" required />
+      </label>
+      <label class="field">Password
+        <input id="auth-pass" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="btn filled block" id="auth-submit">Sign in</button>
+    </form>
+    <p class="auth-error hidden" id="auth-error"></p>
+  </div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="brand"><span class="logo">📦</span> rcloneweb <span class="sub">backup script builder</span></div>
+    <button id="btn-new" class="btn filled tonal block">+ New Script</button>
+    <div class="fleet-block">
+      <div class="fleet-head"><span>🖥 Fleet</span><button id="btn-add-vps" class="btn tonal small">+ Add VPS</button></div>
+      <nav id="fleet-list"></nav>
+    </div>
+    <div class="fleet-block">
+      <div class="fleet-head"><span>☁️ Destinations</span><button id="btn-add-dest" class="btn tonal small">+ Add</button></div>
+      <nav id="dest-list"></nav>
+    </div>
+    <div class="sidebar-sep"></div>
+    <div class="sidebar-label">📜 Scripts</div>
+    <nav id="script-list"></nav>
+    <div class="sidebar-foot">
+      scripts stored locally in <code>./data/scripts</code><br />
+      logged in as <b id="whoami">admin</b> · <a href="#" id="btn-logout">sign out</a>
+    </div>
+  </aside>
+
+  <main id="main">
+    <!-- empty state -->
+    <section id="empty-state" class="empty-state hidden">
+      <div class="empty-icon">📦</div>
+      <h1>No script selected</h1>
+      <p>Create a new backup script or pick one from the sidebar.</p>
+      <p>Build rclone sync scripts for <b>SFTP / FTP / S3</b> destinations with live Discord webhook previews, a full bash editor, one-click runs, and curl-able install links.</p>
+    </section>
+
+    <!-- editor -->
+    <section id="editor" class="hidden">
+      <header id="topbar">
+        <input id="f-name" class="name-input" placeholder="script name" spellcheck="false" />
+        <div class="topbar-actions">
+          <span id="save-status"></span>
+          <button id="btn-save" class="btn filled">💾 Save</button>
+          <button id="btn-delete" class="btn icon-btn danger-text" title="Delete this script">🗑</button>
+          <button id="btn-theme" class="btn icon-btn" title="Toggle light/dark theme">☀️</button>
+        </div>
+      </header>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="builder">🛠 Builder</button>
+        <button class="tab" data-tab="script">📜 Script Editor</button>
+        <button class="tab" data-tab="run">▶ Run &amp; Logs</button>
+        <button class="tab" data-tab="schedule">⏰ Schedule</button>
+        <button class="tab" data-tab="install">🔗 Install</button>
+        <button class="tab" data-tab="webhook-test">🔔 Webhook Test</button>
+      </div>
+
+      <!-- BUILDER TAB : form left, LIVE previews right -->
+      <div id="tab-builder" class="tab-panel active">
+        <div class="builder-grid">
+          <div class="col-form">
+
+            <fieldset>
+              <legend><span class="step-num">0</span> Source VPS</legend>
+              <div class="row">
+                <label class="field grow">Run on <select id="f-source-vps"><option value="local">localhost (panel host)</option></select></label>
+                <button id="btn-test-source" class="btn tonal small" title="Test SSH connection to selected source">🔍 Test</button>
+              </div>
+              <p class="hint" id="source-hint">Leave on localhost to run here, or select a fleet VPS to execute remotely via SSH.</p>
+            </fieldset>
+
+            <fieldset>
+              <legend><span class="step-num">1</span> Source folders &amp; files</legend>
+              <p class="hint">Each row is <code>source → remote</code> (e.g. <code>/home/dockge → hostbrr:backups/hostdzire/home/dockge</code>). Use 📂 to browse source VPS and ☁️ to browse remote.</p>
+              <div id="sources-list"></div>
+              <button id="btn-add-source" class="btn tonal small">+ Add folder / file</button>
+            </fieldset>
+
+            <fieldset>
+              <legend><span class="step-num">2</span> Destination</legend>
+              <div class="row">
+                <label class="field grow">Preset <select id="f-dest-fleet"><option value="manual">Manual — custom</option></select></label>
+                <span class="hint" id="dest-fleet-hint">Choose a saved destination or fill manually</span>
+              </div>
+              <div class="row">
+                <label class="field">Type
+                  <select id="f-dest-type">
+                    <option value="sftp">SFTP</option>
+                    <option value="ftp">FTP</option>
+                    <option value="s3">S3</option>
+                  </select>
+                </label>
+                <label class="field">Remote name<input id="f-remote-name" value="my-backup-remote" spellcheck="false" /></label>
+                <label class="field grow">Remote path<input id="f-remote-path" placeholder="/" spellcheck="false" /></label>
+              </div>
+              <div class="row dest-fields" data-for="sftp ftp">
+                <label class="field grow">Host<input id="f-host" placeholder="host.example.com" /></label>
+                <label class="field">Port<input id="f-port" type="number" placeholder="auto" /></label>
+                <label class="field">User<input id="f-user" autocomplete="off" /></label>
+                <button id="btn-test-dest" class="btn tonal small" title="Test connection to this destination">🔍 Test</button>
+              </div>
+              <div class="row dest-fields" data-for="sftp">
+                <label class="field">Auth
+                  <select id="f-sftp-auth">
+                    <option value="password">Password</option>
+                    <option value="key">SSH key file</option>
+                  </select>
+                </label>
+                <label class="field grow key-field">Key path<input id="f-key-path" placeholder="~/.ssh/id_ed25519" /></label>
+              </div>
+              <div class="row dest-fields" data-for="s3">
+                <label class="field">Provider
+                  <select id="f-s3-provider">
+                    <option>AWS</option><option>Ceph</option><option>Minio</option>
+                    <option>Wasabi</option><option>Backblaze B2 (S3)</option><option>Other</option>
+                  </select>
+                </label>
+                <label class="field">Bucket<input id="f-s3-bucket" /></label>
+                <label class="field">Region<input id="f-s3-region" placeholder="us-east-1" /></label>
+                <label class="field grow">Endpoint (non-AWS)<input id="f-s3-endpoint" placeholder="https://s3.us-west..." /></label>
+              </div>
+              <div class="row" id="secrets-block">
+                <label class="checkbox"><input type="checkbox" id="f-secrets-embed" /> Embed secret in script (unchecked = env var / prompt)</label>
+                <span class="hint embed-warn hidden">⚠ embedded secrets live inside the script — keep it <code>chmod 700</code></span>
+              </div>
+              <div class="row" id="secret-pass-wrap">
+                <label class="field grow">Password (optional — blank = env/prompt)<input id="f-secret-pass" type="password" autocomplete="off" /></label>
+              </div>
+              <div class="row hidden" id="secret-s3-wrap">
+                <label class="field grow">Access key ID (optional)<input id="f-secret-ak" autocomplete="off" /></label>
+                <label class="field grow">Secret access key (optional)<input id="f-secret-sk" type="password" autocomplete="off" /></label>
+              </div>
+              <p class="hint">🔒 Unchecked secrets are never stored here — the script reads them from env vars (<code>FTP_PASS</code>, <code>AWS_ACCESS_KEY_ID</code>…) or prompts at runtime.</p>
+            </fieldset>
+
+            <fieldset>
+              <legend><span class="step-num">3</span> Backup options</legend>
+              <div class="row wrap">
+                <label class="field">Mode
+                  <select id="f-mode">
+                    <option value="sync">sync (mirror)</option>
+                    <option value="copy">copy (safe)</option>
+                  </select>
+                </label>
+                <label class="checkbox"><input type="checkbox" id="f-dry-run" /> default --dry-run</label>
+                <label class="field">Bandwidth limit<input id="f-bandwidth" placeholder="e.g. 10M or off" /></label>
+                <label class="field">Delete older than (days)<input id="f-retention" type="number" min="0" placeholder="0 = off" /></label>
+                <label class="field grow">Log file<input id="f-logfile" placeholder="/var/log/rclone-backup.log" /></label>
+                <label class="field grow">Extra rclone flags<input id="f-extra-flags" placeholder="--transfers 16 --checkers 32 --fast-list --stats-one-line --stats 2s --log-level INFO --retries 5 --low-level-retries 10" /></label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend><span class="step-num">4</span> Discord notification</legend>
+              <div class="row wrap">
+                <label class="checkbox"><input type="checkbox" id="f-wh-enabled" checked /> Enable webhook</label>
+                <label class="checkbox"><input type="checkbox" id="f-wh-onlyfail" /> Only notify on failure</label>
+              </div>
+              <div class="row">
+                <label class="field grow">Webhook URL<input id="f-wh-url" type="url" placeholder="https://discord.com/api/webhooks/..." /></label>
+                <button id="btn-quick-test" class="btn tonal small" title="Send a test embed to this webhook">🔔 Test</button>
+              </div>
+              <div class="row wrap">
+                <label class="field">Bot username<input id="f-wh-user" value="Backup Bot" /></label>
+                <label class="field grow">Avatar URL<input id="f-wh-avatar" placeholder="(optional)" /></label>
+                <label class="field grow">Title template<input id="f-wh-title" value="Backup {STATUS}: {NAME}" /></label>
+              </div>
+              <label class="field">Description template
+                <textarea id="f-wh-desc" rows="4">Host: {HOST}
+Sources: {SOURCES}
+Destination: {DEST}
+Duration: {DURATION}</textarea>
+              </label>
+              <div class="row wrap">
+                <label class="field color-field">Success color<input id="f-wh-color-ok" type="color" value="#57f287" /></label>
+                <label class="field color-field">Failure color<input id="f-wh-color-fail" type="color" value="#ed4245" /></label>
+                <label class="field">Log lines on failure<input id="f-wh-loglines" type="number" value="10" min="0" max="30" /></label>
+              </div>
+              <p class="hint">Template variables: <code>{NAME} {STATUS} {HOST} {SOURCES} {DEST} {DURATION} {DATE}</code></p>
+            </fieldset>
+
+          </div>
+
+          <!-- RIGHT: sticky live previews -->
+          <div class="col-preview">
+            <div class="preview-sticky">
+              <div class="preview-card">
+                <h3>🔔 Discord preview <span class="live-dot" title="updates live"></span></h3>
+                <div class="discord-window">
+                  <div class="discord-msg">
+                    <img class="discord-avatar" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="" />
+                    <div class="discord-content">
+                      <div class="discord-header"><span class="discord-botname" id="pv-username">Backup Bot</span> <span class="discord-badge">APP</span> <span class="discord-time" id="pv-time"></span></div>
+                      <div class="discord-embed" id="pv-embed">
+                        <div class="embed-color" id="pv-color"></div>
+                        <div class="embed-body">
+                          <div class="embed-title" id="pv-title"></div>
+                          <div class="embed-desc" id="pv-desc"></div>
+                          <div class="embed-footer" id="pv-footer"></div>
+                        </div>
+                      </div>
+                      <div class="embed-log" id="pv-log" hidden></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="preview-toggle">
+                  <label class="radio-inline"><input type="radio" name="pv-state" value="success" checked /> Success</label>
+                  <label class="radio-inline"><input type="radio" name="pv-state" value="fail" /> Failure</label>
+                </div>
+              </div>
+
+              <div class="preview-card">
+                <h3>📜 Live script <span class="live-dot" title="regenerates as you edit the form"></span></h3>
+                <pre id="script-preview"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCRIPT EDITOR TAB -->
+      <div id="tab-script" class="tab-panel">
+        <div class="editor-toolbar">
+          <button id="btn-regen" class="btn tonal small" title="Overwrite editor with freshly generated script">↻ Regenerate from builder</button>
+          <span class="hint">Everything below is fully editable. Manual edits are kept on save.</span>
+        </div>
+        <textarea id="cm-script"></textarea>
+      </div>
+
+      <!-- RUN TAB -->
+      <div id="tab-run" class="tab-panel">
+        <div class="row wrap" style="align-items:center">
+          <label class="field">Run on <select id="f-run-vps"><option value="local">localhost</option></select></label>
+          <button id="btn-run" class="btn filled">▶ Run now</button>
+          <button id="btn-run-dry" class="btn tonal">🧪 Dry run</button>
+          <button id="btn-run-stop" class="btn danger hidden">🛑 Stop</button>
+          <span id="run-status" class="hint"></span>
+        </div>
+        <p class="hint">Executes on the selected source VPS. Dry run forces <code>DRY_RUN=1</code> — nothing transferred.</p>
+
+        <!-- Beautiful live run card -->
+        <div id="run-beautiful" class="preview-card hidden" style="margin-bottom:16px; overflow:hidden">
+          <div style="display:flex; align-items:center; gap:14px">
+            <div id="run-beautiful-icon" style="width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:20px;background:var(--surface-2);flex-shrink:0">⏳</div>
+            <div style="flex:1; min-width:0">
+              <div id="run-beautiful-title" style="font-weight:700">Running…</div>
+              <div class="hint" id="run-beautiful-subtitle" style="margin:0"></div>
+            </div>
+            <div id="run-beautiful-spinner" style="width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+          </div>
+          <div style="height:6px;background:var(--surface-2);border-radius:999px;overflow:hidden;margin:14px 0 10px">
+            <div id="run-progress-fill" style="height:100%;width:0;background:var(--primary);border-radius:999px;transition:width 0.6s ease"></div>
+          </div>
+          <div id="run-steps" style="display:flex; gap:8px; flex-wrap:wrap"></div>
+          <div class="row" style="justify-content:flex-end; margin-top:10px; margin-bottom:0">
+            <button id="btn-download-live-log" class="btn tonal small">⬇ Download log</button>
+          </div>
+        </div>
+
+        <div id="run-live-stats" class="preview-card hidden" style="margin-bottom:12px; padding:10px 14px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; font-size:12px"></div>
+
+        <div style="display:grid; grid-template-columns: 1fr 340px; gap:16px; margin-top:0">
+          <pre id="run-terminal" class="run-terminal" style="margin:0">// no run yet</pre>
+          <div class="preview-card" style="margin:0; padding:14px; display:flex; flex-direction:column; max-height:320px">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <b>Log file</b>
+              <div class="row" style="margin:0; gap:6px">
+                <button id="btn-view-log" class="btn tonal small">👁 View</button>
+                <button id="btn-download-log" class="btn tonal small">⬇ Download</button>
+              </div>
+            </div>
+            <code id="run-log-detail" style="white-space:pre-wrap; word-break:break-all; overflow-y:auto; flex:1; background:var(--surface-2); border-radius:8px; padding:10px; font-size:12px">select a run above to view details</code>
+            <p class="hint" style="margin:8px 0 0">Logs are kept for the last 25 runs per VPS. Each run below has View + Download.</p>
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:space-between; align-items:center; margin-top:20px">
+          <h3 style="margin:0">Run history</h3>
+          <div class="row" style="margin:0">
+            <button id="btn-clear-logs" class="btn tonal small">🗑 Clear logs</button>
+            <button id="btn-download-all-logs" class="btn tonal small">⬇ Download all</button>
+          </div>
+        </div>
+        <div id="run-history" style="margin-top:10px"></div>
+      </div>
+
+      <!-- SCHEDULE TAB -->
+      <div id="tab-schedule" class="tab-panel">
+        <div class="preview-card" style="margin-bottom:18px">
+          <h3 style="margin-top:0">⏰ New Schedule — panel will run it automatically</h3>
+          <div class="row">
+            <label class="field grow">Run on VPS <select id="sched-vps"></select></label>
+            <label class="checkbox"><input type="checkbox" id="sched-enabled" checked> Enabled</label>
+          </div>
+          <div id="cron-mount" style="margin:12px 0"></div>
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <div class="row" style="gap:8px; margin:0">
+              <button id="btn-save-schedule" class="btn filled">+ Add Schedule</button>
+              <button id="btn-cancel-schedule" class="btn tonal small hidden">Cancel</button>
+            </div>
+            <span class="hint" id="sched-save-hint"></span>
+          </div>
+        </div>
+
+        <h3>Active Schedules for this script</h3>
+        <div id="schedule-list"></div>
+        <p class="hint" id="schedule-empty" style="display:none">No schedules yet — add one above.</p>
+
+        <div class="preview-card" style="margin-top:18px">
+          <h3 style="margin-top:0">Panel Scheduler</h3>
+          <div class="row wrap" style="justify-content:space-between">
+            <span class="hint">Panel checks every minute and runs due schedules. For 24/7 reliability add to system crontab:</span>
+            <button id="btn-trigger-scheduler" class="btn tonal small">▶ Run due now</button>
+          </div>
+          <div class="cmd-box" style="margin-top:8px"><code> * * * * * php /home/opencode/rcloneweb/cron.php >> /var/log/rcloneweb-cron.log 2>&1</code><button class="btn tonal small copy-btn" data-copy-text="* * * * * php /home/opencode/rcloneweb/cron.php >> /var/log/rcloneweb-cron.log 2>&1">Copy</button></div>
+          <p class="hint">Status: <b id="scheduler-status">idle</b> — last check <span id="scheduler-last">never</span></p>
+        </div>
+
+        <h3>Manual crontab (alternative)</h3>
+        <div class="cmd-box"><code id="cron-line"></code><button class="btn tonal small copy-btn" data-copy-target="#cron-line">Copy</button></div>
+        <div class="cmd-box"><code id="cron-line-curl"></code><button class="btn tonal small copy-btn" data-copy-target="#cron-line-curl">Copy</button></div>
+        <p class="hint">Paste into <code>crontab -e</code> on the source VPS if you prefer not to use the panel scheduler.</p>
+      </div>
+
+      <!-- INSTALL TAB -->
+      <div id="tab-install" class="tab-panel">
+        <h3>Curl-able link</h3>
+        <p class="hint">Token-protected raw link (updates automatically when you save):</p>
+        <div class="cmd-box"><code id="raw-url"></code><button class="btn tonal small copy-btn" data-copy-target="#raw-url">Copy</button></div>
+
+        <h3>One-line install</h3>
+        <div class="cmd-box"><code id="install-cmd"></code><button class="btn tonal small copy-btn" data-copy-target="#install-cmd">Copy</button></div>
+
+        <h3>Required permissions</h3>
+        <table class="perm-table">
+          <tr><td><code>chmod 700 backup.sh</code></td><td>Recommended — owner only; safe if secrets are embedded.</td></tr>
+          <tr><td><code>chmod +x backup.sh</code></td><td>Minimum to run directly (<code>./backup.sh</code>).</td></tr>
+          <tr><td><code>rclone</code></td><td>Install: <code>curl https://rclone.org/install.sh | sudo bash</code></td></tr>
+          <tr><td><code>curl</code></td><td>Needed for Discord notifications.</td></tr>
+        </table>
+
+        <h3>Secrets for unattended runs</h3>
+        <div class="cmd-box wrap-text"><code id="env-example"></code><button class="btn tonal small copy-btn" data-copy-target="#env-example">Copy</button></div>
+      </div>
+
+      <!-- WEBHOOK TEST TAB -->
+      <div id="tab-webhook-test" class="tab-panel">
+        <h3>Send test notification</h3>
+        <p class="hint">Sends sample embeds using the exact payload format of the generated script.</p>
+        <div class="row wrap">
+          <button id="btn-send-success" class="btn filled">Send success test</button>
+          <button id="btn-send-fail" class="btn danger">Send failure test</button>
+        </div>
+        <pre id="webhook-result" class="hidden"></pre>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- VPS dialog -->
+<div id="vps-dialog" class="dlg-overlay">
+  <div class="dlg-card" style="width:520px">
+    <h3 class="dlg-title" id="vps-dlg-title">Add VPS</h3>
+    <label class="field">Name <input id="vps-name" placeholder="my-vps-1" /></label>
+    <div class="row">
+      <label class="field grow">Host <input id="vps-host" placeholder="1.2.3.4 or host.example.com" /></label>
+      <label class="field">Port <input id="vps-port" type="number" value="22" /></label>
+    </div>
+    <div class="row">
+      <label class="field">User <input id="vps-user" value="root" /></label>
+      <label class="field">Auth <select id="vps-auth"><option value="password">Password</option><option value="key">SSH key</option></select></label>
+    </div>
+    <label class="field" id="vps-pass-wrap">Password <input id="vps-pass" type="password" autocomplete="new-password" /></label>
+    <label class="field hidden" id="vps-key-wrap">Key path <input id="vps-key" placeholder="~/.ssh/id_ed25519" /></label>
+    <div class="row" style="margin-top:6px">
+      <button id="btn-vps-test" class="btn tonal small">🔍 Test connection</button>
+      <span id="vps-test-result" class="hint"></span>
+    </div>
+    <div class="dlg-actions">
+      <button id="btn-vps-cancel" class="btn ghost">Cancel</button>
+      <button id="btn-vps-save" class="btn filled">Save VPS</button>
+    </div>
+  </div>
+</div>
+
+<!-- Destination dialog -->
+<div id="dest-dialog" class="dlg-overlay">
+  <div class="dlg-card" style="width:560px; max-height:85vh; overflow-y:auto">
+    <h3 class="dlg-title" id="dest-dlg-title">Add Destination</h3>
+    <label class="field">Name <input id="dest-name" placeholder="my-sftp-1" /></label>
+    <p class="hint" style="margin:-6px 0 10px">Friendly label shown in panel (e.g. “500GB-Hostbrr”)</p>
+    <div class="row">
+      <label class="field">Type <select id="dest-type"><option value="sftp">SFTP</option><option value="ftp">FTP</option><option value="s3">S3</option></select></label>
+      <label class="field">Remote name <input id="dest-remote-name" value="my-backup-remote" /></label>
+      <label class="field grow">Remote path <input id="dest-remote-path" placeholder="/" /></label>
+    </div>
+    <p class="hint" style="margin:-6px 0 10px"><code>Remote name</code> is the rclone identifier (<code>rclone config create &lt;remote-name&gt; …</code>) — lowercase, no spaces. Used in scripts as <code>my-backup-remote:/path</code></p>
+    <div class="row dest-dlg-row" data-for="sftp ftp">
+      <label class="field grow">Host <input id="dest-host" placeholder="host.example.com" /></label>
+      <label class="field">Port <input id="dest-port" type="number" placeholder="auto" /></label>
+      <label class="field">User <input id="dest-user" /></label>
+    </div>
+    <div class="row dest-dlg-row" data-for="sftp">
+      <label class="field">Auth <select id="dest-sftp-auth"><option value="password">Password</option><option value="key">SSH key</option></select></label>
+      <label class="field grow">Key path <input id="dest-key-path" placeholder="~/.ssh/id_ed25519" /></label>
+    </div>
+    <div class="row dest-dlg-row" data-for="s3">
+      <label class="field">Provider <select id="dest-s3-provider"><option>AWS</option><option>Ceph</option><option>Minio</option><option>Wasabi</option><option>Backblaze B2 (S3)</option><option>Other</option></select></label>
+      <label class="field">Bucket <input id="dest-s3-bucket" /></label>
+      <label class="field">Region <input id="dest-s3-region" placeholder="us-east-1" /></label>
+      <label class="field grow">Endpoint <input id="dest-s3-endpoint" placeholder="https://s3.example.com" /></label>
+    </div>
+    <div class="row dest-dlg-row" data-for="sftp ftp"><label class="field grow">Password <input id="dest-password" type="password" autocomplete="new-password" placeholder="leave blank to keep" /></label></div>
+    <div class="row dest-dlg-row" data-for="s3"><label class="field">Access key <input id="dest-ak" placeholder="AKIA..." /></label><label class="field grow">Secret key <input id="dest-sk" type="password" placeholder="leave blank to keep" /></label></div>
+    <div class="row" style="margin-top:6px">
+      <button id="btn-dest-test" class="btn tonal small">🔍 Test connection</button>
+      <span id="dest-test-result" class="hint"></span>
+    </div>
+    <div class="dlg-actions">
+      <button id="btn-dest-cancel" class="btn ghost">Cancel</button>
+      <button id="btn-dest-save" class="btn filled">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Browse dialog -->
+<div id="browse-dialog" class="dlg-overlay">
+  <div class="dlg-card" style="width:560px; max-height:80vh; display:flex; flex-direction:column">
+    <h3 class="dlg-title" id="browse-title">Browse</h3>
+    <div class="row" style="margin-bottom:8px">
+      <label class="field grow">Path <input id="browse-path" spellcheck="false" /></label>
+      <button id="btn-browse-go" class="btn tonal small">Go</button>
+      <button id="btn-browse-up" class="btn ghost small" title="Up one level">⬆ Up</button>
+    </div>
+    <div id="browse-list" style="overflow-y:auto; max-height:40vh; border:1px solid var(--border); border-radius:10px; padding:4px"></div>
+    <p class="hint" id="browse-hint" style="margin-top:8px"></p>
+    <div class="row" style="margin-top:4px">
+      <button id="btn-browse-mkdir" class="btn tonal small">📁 New Folder</button>
+      <span class="hint">Create directory in current path</span>
+    </div>
+    <div class="dlg-actions">
+      <button id="btn-browse-cancel" class="btn ghost">Cancel</button>
+      <button id="btn-browse-select" class="btn filled">Select</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
+<script src="js/dialog.js"></script>
+<script src="js/cron.js"></script>
+<script src="js/generator.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

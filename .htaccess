@@ -1,0 +1,16 @@
+RewriteEngine On
+RewriteBase /
+
+# api + raw go to api/index.php (preserve query)
+RewriteRule ^(api|raw|i)/ api/index.php [L,QSA]
+
+# public assets: /css/* -> public/css/*, /js/* -> public/js/*
+RewriteRule ^(css|js)/(.*)$ public/$1/$2 [L]
+
+# real files pass through
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# everything else -> SPA shell
+RewriteRule ^ index.php [L]

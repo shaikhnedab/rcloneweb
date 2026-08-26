@@ -1,0 +1,16 @@
+# secrets & runtime data (keep structure with .gitkeep)
+data/auth.json
+data/.secret
+data/scripts/*.json
+data/runs/*
+!data/runs/.gitkeep
+data/fleet/*
+!data/fleet/.gitkeep
+data/destinations/*
+!data/destinations/.gitkeep
+data/schedules/*
+!data/schedules/.gitkeep
+*.log
+/tmp/
+.env
+node_modules/
