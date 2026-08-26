@@ -55,7 +55,7 @@ sudo apt install -y sshpass
 rclone version  # → v1.75+
 
 # 5. Run — built-in PHP (dev)
-php -S 0.0.0.0:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php &
+php -S 1.0.1.0:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php &
 # → http://YOUR_VPS_IP:8765
 # Login: admin / hunter2hunter (first run will ask to create it, then delete data/auth.json to reset)
 

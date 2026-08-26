@@ -2,6 +2,11 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-08-26
+
+### Changed
+- Patch release via auto-release workflow.
+
 ## [1.0.0] - 2026-08-26
 
 ### Added
@@ -27,3 +32,4 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
+
