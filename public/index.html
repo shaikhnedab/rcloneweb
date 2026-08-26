@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#080C14" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#F1F4F9" media="(prefers-color-scheme: light)" />
 <title>rcloneweb — rclone backup script builder</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" />
@@ -10,6 +13,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to content</a>
 
 <!-- ============ AUTH VIEW ============ -->
 <div id="auth-view" class="auth-view hidden">
@@ -18,11 +22,11 @@
     <p class="hint center" id="auth-subtitle">rclone backup script builder</p>
 
     <form id="login-form">
-      <label class="field">Username
-        <input id="auth-user" autocomplete="username" required />
+      <label class="field" for="auth-user">Username
+        <input id="auth-user" name="username" autocomplete="username" spellcheck="false" required />
       </label>
-      <label class="field">Password
-        <input id="auth-pass" type="password" autocomplete="current-password" required />
+      <label class="field" for="auth-pass">Password
+        <input id="auth-pass" name="password" type="password" autocomplete="current-password" required />
       </label>
       <button type="submit" class="btn filled block" id="auth-submit">Sign in</button>
     </form>
@@ -68,8 +72,8 @@
         <div class="topbar-actions">
           <span id="save-status"></span>
           <button id="btn-save" class="btn filled">💾 Save</button>
-          <button id="btn-delete" class="btn icon-btn danger-text" title="Delete this script">🗑</button>
-          <button id="btn-theme" class="btn icon-btn" title="Toggle light/dark theme">☀️</button>
+          <button id="btn-delete" class="btn icon-btn danger-text" title="Delete this script" aria-label="Delete script">🗑</button>
+          <button id="btn-theme" class="btn icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">☀️</button>
         </div>
       </header>
 
@@ -87,11 +91,19 @@
         <div class="builder-grid">
           <div class="col-form">
 
+            <div class="pipeline" role="img" aria-label="Pipeline: source VPS → rclone → destination">
+              <span class="pipeline__node">Source</span>
+              <span class="pipeline__track" aria-hidden="true"><span class="pipeline__packet"></span><span class="pipeline__packet"></span><span class="pipeline__packet"></span></span>
+              <span class="pipeline__node">rclone</span>
+              <span class="pipeline__track" aria-hidden="true"><span class="pipeline__packet"></span><span class="pipeline__packet"></span><span class="pipeline__packet"></span></span>
+              <span class="pipeline__node">Destination</span>
+            </div>
+
             <fieldset>
               <legend><span class="step-num">0</span> Source VPS</legend>
               <div class="row">
-                <label class="field grow">Run on <select id="f-source-vps"><option value="local">localhost (panel host)</option></select></label>
-                <button id="btn-test-source" class="btn tonal small" title="Test SSH connection to selected source">🔍 Test</button>
+                <label class="field grow" for="f-source-vps">Run on <select id="f-source-vps"><option value="local">localhost (panel host)</option></select></label>
+                <button id="btn-test-source" class="btn tonal small" title="Test SSH connection to selected source" aria-label="Test source connection">🔍 Test</button>
               </div>
               <p class="hint" id="source-hint">Leave on localhost to run here, or select a fleet VPS to execute remotely via SSH.</p>
             </fieldset>
@@ -472,13 +484,14 @@ Duration: {DURATION}</textarea>
   </div>
 </div>
 
-<div id="toast" class="hidden"></div>
+<div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
 <script src="js/dialog.js"></script>
 <script src="js/cron.js"></script>
 <script src="js/generator.js"></script>
+<script src="js/fleet.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

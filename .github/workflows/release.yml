@@ -1,0 +1,60 @@
+name: auto-release-patch
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'VERSION'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip-release]')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Bump patch version
+        run: |
+          set -e
+          ver=$(cat VERSION)
+          echo "Current $ver"
+          IFS='.' read -r maj min pat <<< "$ver"
+          pat=$((pat+1))
+          new="$maj.$min.$pat"
+          echo "$new" > VERSION
+          # prepend changelog
+          today=$(date +%Y-%m-%d)
+          # create entry if not exists
+          if ! grep -q "## \[$new\]" CHANGELOG.md; then
+            awk -v v="$new" -v d="$today" '
+              /^## \[1\.0\.0\]/ { print "## [" v "] - " d "\n\n### Changed\n- Patch release via auto-release workflow.\n"; }
+              { print }
+            ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+            # update link at bottom
+            echo "" >> CHANGELOG.md
+            # ensure link exists
+            grep -q "\[$new\]" CHANGELOG.md || echo "[$new]: https://github.com/${{ github.repository }}/releases/tag/v$new" >> CHANGELOG.md
+          fi
+          # update README badge if present
+          sed -i "s/[0-9]\+\.[0-9]\+\.[0-9]\+/$new/g" README.md || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md README.md
+          git commit -m "chore: bump to $new [skip-release]" || echo "no changes"
+          git tag "v$new"
+          git push origin main --follow-tags
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver=$(cat VERSION)
+          # extract section for this version from CHANGELOG
+          awk -v v="## [$ver]" ' $0==v {p=1; print; next} p && /^## \[/ {exit} p' CHANGELOG.md > /tmp/notes.md
+          gh release create "v$ver" --title "v$ver" --notes-file /tmp/notes.md --generate-notes || gh release create "v$ver" --title "v$ver" --generate-notes

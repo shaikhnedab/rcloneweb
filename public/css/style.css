@@ -1,40 +1,42 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-/* ============ rcloneweb — Material-inspired theme (light + dark) ============ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap');
+/* ============ rcloneweb — Fleet Pipeline theme (distinctive, not templated) ============ */
+/* Subject: rclone fleet backup — audience: SREs managing a VPS fleet, job: compose a verifiable pipeline and ship it */
 :root, html[data-theme="dark"] {
-  --bg: #111318;
-  --surface: #1b1e24;
-  --surface-2: #232730;
-  --surface-3: #2b3038;
-  --border: #363c47;
-  --text: #e5e8ee;
-  --text-muted: #9aa3af;
-  --primary: #6b8afd;
-  --primary-strong: #4f6ef7;
-  --on-primary: #ffffff;
-  --danger: #f2635f;
-  --green: #57d98a;
-  --yellow: #ffd54a;
-  --shadow: 0 4px 20px rgba(0,0,0,.45);
-  --shadow-sm: 0 1px 4px rgba(0,0,0,.35);
+  --bg: #080C14;
+  --surface: #131A29;
+  --surface-2: #1C2438;
+  --surface-3: #24314F;
+  --border: #2E3B5C;
+  --text: #E6EAF2;
+  --text-muted: #8A94B0;
+  --primary: #00E5CC;
+  --primary-strong: #00C2AD;
+  --on-primary: #04201C;
+  --danger: #FF4D6A;
+  --green: #2ECC71;
+  --yellow: #FFB020;
+  --shadow: 0 8px 30px rgba(0,0,0,.55);
+  --shadow-sm: 0 1px 8px rgba(0,0,0,.45);
 }
 html[data-theme="light"] {
-  --bg: #f2f4f8;
-  --surface: #ffffff;
-  --surface-2: #f6f7fa;
-  --surface-3: #eceff4;
-  --border: #dde2ea;
-  --text: #1a1d23;
-  --text-muted: #667085;
-  --primary: #3d5afe;
-  --primary-strong: #3049d6;
+  --bg: #F1F4F9;
+  --surface: #FFFFFF;
+  --surface-2: #E9EEF8;
+  --surface-3: #DDE6F5;
+  --border: #C8D6EE;
+  --text: #0F1A2E;
+  --text-muted: #5B6B8C;
+  --primary: #009E8E;
+  --primary-strong: #00786D;
   --on-primary: #ffffff;
-  --danger: #dc362e;
-  --green: #1e9e56;
-  --yellow: #b28900;
-  --shadow: 0 4px 18px rgba(30,40,70,.12);
-  --shadow-sm: 0 1px 3px rgba(30,40,70,.10);
+  --danger: #E11D48;
+  --green: #15803D;
+  --yellow: #A16207;
+  --shadow: 0 8px 24px rgba(15,26,46,.12);
+  --shadow-sm: 0 1px 8px rgba(15,26,46,.10);
 }
 
+html { color-scheme: dark light; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
@@ -43,13 +45,26 @@ body {
   transition: background .25s, color .25s;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
+.skip-link { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; background: var(--primary); color: var(--on-primary); padding:8px 12px; border-radius:8px; z-index:9999; }
+.skip-link:focus { left:16px; top:16px; width:auto; height:auto; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.01ms !important; } }
 code {
   background: var(--surface-3); padding: 1px 5px; border-radius: 5px;
   font-family: "JetBrains Mono", "SFMono-Regular", Consolas, Menlo, monospace;
   font-size: 12px;
 }
+h1, h2, h3, .brand, legend, .tab { font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif; letter-spacing: -0.015em; }
 h3 { font-size: 15px; font-weight: 600; margin: 22px 0 10px; }
 a { color: var(--primary); }
+/* Pipeline signature — the one memorable element: source → rclone → destination with flowing packets */
+.pipeline { display:flex; align-items:center; gap:10px; padding:10px 14px; background: var(--surface-2); border:1px solid var(--border); border-radius: 12px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-muted); overflow:hidden; }
+.pipeline__node { padding:4px 8px; background: var(--surface); border:1px solid var(--border); border-radius: 999px; font-weight:600; color: var(--text); white-space:nowrap; }
+.pipeline__track { flex:1; height:2px; background: var(--border); position:relative; overflow:hidden; border-radius:999px; }
+.pipeline__packet { position:absolute; top:-3px; width:8px; height:8px; background: var(--primary); border-radius:50%; box-shadow: 0 0 8px var(--primary); animation: pipeline-flow 1.8s linear infinite; }
+.pipeline__packet:nth-child(2){ animation-delay:.6s; opacity:.7; }
+.pipeline__packet:nth-child(3){ animation-delay:1.2s; opacity:.45; }
+@keyframes pipeline-flow { from{ left:-8px; } to{ left:100%; } }
+@media (prefers-reduced-motion: reduce) { .pipeline__packet{ animation:none; display:none; } }
 
 /* ---------- buttons ---------- */
 .btn {

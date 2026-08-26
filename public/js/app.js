@@ -137,11 +137,11 @@
     const row = document.createElement('div');
     row.className = 'source-row';
     row.innerHTML = `
-      <div class="src-with-browse"><input class="src-path" placeholder="/" spellcheck="false" /><button type="button" class="btn tonal small browse-btn" data-kind="src" title="Browse VPS">📂</button></div>
-      <div class="src-with-browse"><input class="src-dest" placeholder="remote:/  (empty = /)" spellcheck="false" /><button type="button" class="btn tonal small browse-btn" data-kind="dest" title="Browse remote">☁️</button></div>
-      <input class="src-include" placeholder="include (e.g. *.jpg)" spellcheck="false" />
-      <input class="src-exclude" placeholder="exclude (e.g. *.tmp)" spellcheck="false" />
-      <button type="button" class="rm-btn" title="remove">✕</button>`;
+      <div class="src-with-browse"><input class="src-path" placeholder="/" spellcheck="false" aria-label="Source path" /><button type="button" class="btn tonal small browse-btn" data-kind="src" title="Browse VPS" aria-label="Browse source">📂</button></div>
+      <div class="src-with-browse"><input class="src-dest" placeholder="remote:/  (empty = /)" spellcheck="false" aria-label="Remote destination" /><button type="button" class="btn tonal small browse-btn" data-kind="dest" title="Browse remote" aria-label="Browse remote">☁️</button></div>
+      <input class="src-include" placeholder="include (e.g. *.jpg)" spellcheck="false" aria-label="Include pattern" />
+      <input class="src-exclude" placeholder="exclude (e.g. *.tmp)" spellcheck="false" aria-label="Exclude pattern" />
+      <button type="button" class="rm-btn" title="Remove source" aria-label="Remove source">✕</button>`;
     row.querySelector('.src-path').value = s.path || '';
     row.querySelector('.src-dest').value = s.dest || '';
     row.querySelector('.src-include').value = s.include || '';
@@ -176,12 +176,12 @@
     $$('#secrets-block .embed-warn').forEach((e) => e.classList.toggle('hidden', !embed));
   }
 
-  // ---------- fleet ----------
+  // ---------- fleet (now via deep Fleet module) ----------
   async function loadFleet() {
     try {
-      const res = await fetch('/api/fleet');
-      if (!res.ok) return;
-      fleetState.list = await res.json();
+      // deep module is the single seam — two adapters: fetch vs in-memory for tests
+      const list = await Fleet.listVps();
+      fleetState.list = list;
       renderFleet();
       populateSourceSelectors();
     } catch {}
@@ -194,7 +194,7 @@
     for (const v of fleetState.list) {
       const div = document.createElement('div');
       div.className = 'fleet-item';
-      div.innerHTML = `<span class="fleet-dot ${v.lastSeen?'online':''}"></span><span class="nm">${v.name}</span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit VPS">✎</button><button class="fleet-btn danger del" title="Delete VPS">✕</button></span>`;
+      div.innerHTML = `<span class="fleet-dot ${v.lastSeen?'online':''}" aria-hidden="true"></span><span class="nm">${v.name}</span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit VPS" aria-label="Edit ${v.name}">✎</button><button class="fleet-btn danger del" title="Delete VPS" aria-label="Delete ${v.name}">✕</button></span>`;
       div.querySelector('.edit').addEventListener('click', (e)=>{ e.stopPropagation(); openVpsDialog(v.id); });
       div.querySelector('.del').addEventListener('click', async (e)=>{
         e.stopPropagation();
@@ -315,10 +315,10 @@
     btn.textContent=orig; btn.disabled=false;
   }
 
-  // ---------- destination fleet ----------
+  // ---------- destination fleet (via Fleet module) ----------
   const destFleetState = { list:[], editingId:null };
   async function loadDestinations(){
-    try{ const r=await fetch('/api/destinations'); if(!r.ok) return; destFleetState.list=await r.json(); renderDestList(); populateDestFleetSelect(); }catch{}
+    try{ const list = await Fleet.listDest(); destFleetState.list=list; renderDestList(); populateDestFleetSelect(); }catch{}
   }
   function renderDestList(){
     const nav=$('#dest-list'); if(!nav) return;
@@ -328,7 +328,7 @@
       const div=document.createElement('div');
       div.className='fleet-item';
       const icon = d.type==='s3' ? '🪣' : (d.type==='ftp' ? '📂' : '🔐');
-      div.innerHTML=`<span class="fleet-dot ${d.lastSeen?'online':''}"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${d.name}</span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit">✎</button><button class="fleet-btn danger del" title="Delete">✕</button></span>`;
+      div.innerHTML=`<span class="fleet-dot ${d.lastSeen?'online':''}" aria-hidden="true"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${d.name}</span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit destination" aria-label="Edit ${d.name}">✎</button><button class="fleet-btn danger del" title="Delete destination" aria-label="Delete ${d.name}">✕</button></span>`;
       div.querySelector('.edit').addEventListener('click',e=>{e.stopPropagation(); openDestDialog(d.id);});
       div.querySelector('.del').addEventListener('click',async e=>{
         e.stopPropagation();
