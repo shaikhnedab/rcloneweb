@@ -1,5 +1,18 @@
 <?php
 header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+// HSTS + Secure cookies when behind HTTPS (direct or X-Forwarded-Proto from Nginx)
+if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)) {
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
+function isSecureRequest(): bool {
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') return true;
+    if (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443) return true;
+    return false;
+}
+function secureCookieSuffix(): string { return isSecureRequest() ? '; Secure' : ''; }
 require_once __DIR__.'/lib/Auth.php';
 require_once __DIR__.'/lib/Store.php';
 require_once __DIR__.'/lib/Runs.php';
@@ -57,16 +70,16 @@ if ($uri === '/api/auth/setup' && $method==='POST') {
     if (!$u || !is_string($p) || strlen($p)<6) send(400, ['error'=>'Username required, password must be at least 6 characters']);
     Auth::create(substr($u,0,40), $p);
     $sess=Auth::makeSession($u);
-    send(200, ['ok'=>true], ['Set-Cookie'=>"rw_session=".rawurlencode($sess)."; Path=/; HttpOnly; SameSite=Lax; Max-Age=". (30*24*3600)]);
+    send(200, ['ok'=>true], ['Set-Cookie'=>"rw_session=".rawurlencode($sess)."; Path=/; HttpOnly; SameSite=Lax; Max-Age=". (30*24*3600) . secureCookieSuffix()]);
 }
 if ($uri === '/api/auth/login' && $method==='POST') {
     $b=json_body();
     if (!Auth::verify((string)($b['username']??''), (string)($b['password']??''))) send(401, ['error'=>'Invalid username or password']);
     $sess=Auth::makeSession((string)$b['username']);
-    send(200, ['ok'=>true], ['Set-Cookie'=>"rw_session=".rawurlencode($sess)."; Path=/; HttpOnly; SameSite=Lax; Max-Age=". (30*24*3600)]);
+    send(200, ['ok'=>true], ['Set-Cookie'=>"rw_session=".rawurlencode($sess)."; Path=/; HttpOnly; SameSite=Lax; Max-Age=". (30*24*3600) . secureCookieSuffix()]);
 }
 if ($uri === '/api/auth/logout' && $method==='POST') {
-    send(200, ['ok'=>true], ['Set-Cookie'=>'rw_session=; Path=/; HttpOnly; Max-Age=0']);
+    send(200, ['ok'=>true], ['Set-Cookie'=>'rw_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' . secureCookieSuffix()]);
 }
 
 // ---- raw token endpoints (no session needed) ----

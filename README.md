@@ -1,7 +1,7 @@
 # 📦 rcloneweb — Beautiful rclone backup panel
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.2-00E5CC?style=for-the-badge&logo=github" />
+  <img src="https://img.shields.io/badge/version-1.0.3-00E5CC?style=for-the-badge&logo=github" />
   <img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=for-the-badge&logo=php&logoColor=white" />
   <img src="https://img.shields.io/badge/rclone-v1.75-3A9BDC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Nginx-Apache-269539?style=for-the-badge&logo=nginx" />
@@ -152,7 +152,85 @@ server {
 
 > **Do not mix** `root` + `try_files` with `proxy_pass` in the same `location /`. Pick **one** of the two options. If `css/style.css` still 404 behind a proxy, check `nginx -T` that you don't have both.
 
-**`.htaccess` is already included** for Apache — just set `DocumentRoot /var/www/rcloneweb` and `AllowOverride All`.
+#### 🔒 SSL / HTTPS — Nginx + app (auto Secure cookies + HSTS)
+
+The app auto-detects HTTPS via `HTTPS` or `X-Forwarded-Proto: https` (set by Nginx below) and then:
+- adds `Secure` to `rw_session` cookies,
+- sends `Strict-Transport-Security: max-age=31536000; includeSubDomains` + `X-Frame-Options: SAMEORIGIN`.
+
+**With `certbot` (easiest, either option):**
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d panel.example.com   # auto-creates 443 + redirect, test with --dry-run first
+sudo certbot renew --dry-run
+```
+
+**Manual 443 example — Option A (php-fpm):**
+```nginx
+server {
+    listen 80;
+    server_name panel.example.com;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    server_name panel.example.com;
+    root /var/www/rcloneweb;
+    index index.php;
+
+    ssl_certificate /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location ~ ^/(data|\.git|\.env) { deny all; return 404; }
+    location ~ /\. { deny all; access_log off; log_not_found off; }
+    location ^~ /css/ { alias /var/www/rcloneweb/public/css/; expires 7d; access_log off; }
+    location ^~ /js/  { alias /var/www/rcloneweb/public/js/;  expires 7d; access_log off; }
+    location / { try_files $uri $uri/ /index.php?$args; }
+    location ~ ^/(api|raw|i)(/|$) { try_files $uri /api/index.php?$args; }
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.5-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_read_timeout 600;
+        client_max_body_size 10M;
+    }
+}
+```
+
+**Manual 443 — Option B (reverse proxy to `php -S`):**
+```nginx
+server { listen 80; server_name panel.example.com; return 301 https://$host$request_uri; }
+server {
+    listen 443 ssl http2;
+    server_name panel.example.com;
+    ssl_certificate /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    location ~ ^/(data|\.git|\.env) { deny all; return 404; }
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;  # lets app set Secure cookies + HSTS
+        proxy_http_version 1.1;
+        proxy_read_timeout 600s;
+        client_max_body_size 10M;
+    }
+}
+```
+
+> No extra app config needed — just ensure Nginx sends `X-Forwarded-Proto` (above). Test: `curl -I https://panel.example.com/api/auth/status` should show `strict-transport-security` and `set-cookie: ...; Secure`.
+
+**`.htaccess` is already included** for Apache — just set `DocumentRoot /var/www/rcloneweb` and `AllowOverride All`. For Apache SSL use `a2enmod ssl` + certbot `--apache`.
 
 ---
 

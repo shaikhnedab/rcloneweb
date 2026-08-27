@@ -2,6 +2,17 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-08-27
+
+### Added
+- **SSL / HTTPS support — Nginx + app** — the panel now auto-detects HTTPS via `HTTPS` / `X-Forwarded-Proto: https` / `SERVER_PORT 443` and sends `Strict-Transport-Security: max-age=31536000; includeSubDomains` + `X-Frame-Options: SAMEORIGIN` + `Referrer-Policy`. `rw_session` cookies get `Secure` when the request is HTTPS (required behind an SSL-terminating Nginx). `router.php` and `index.php` also send HSTS so the SPA shell is covered.
+
+### Changed
+- **README — Nginx SSL** — added HTTP→HTTPS redirect, full 443 examples for both **Option A (php-fpm)** and **Option B (reverse proxy to `php -S`)** with `ssl_certificate`, `options-ssl-nginx.conf`, `ssl_dhparam`, and `X-Forwarded-Proto` so the app sets `Secure` cookies. Added `certbot --nginx` one-liner and a note to test with `curl -I https://panel.example.com/api/auth/status`.
+
+### Fixed
+- **Dev-server data leak** — `router.php` / `index.php` now return 404 for `/data/`, `/.git/`, `/.env` even on `php -S` (mirrors the Nginx `deny all`), so `data/auth.json` can't be fetched directly in dev.
+
 ## [1.0.2] - 2026-08-27
 
 ### Fixed
@@ -54,6 +65,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.3]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.3
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
