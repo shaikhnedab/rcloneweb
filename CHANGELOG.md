@@ -68,6 +68,11 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - **Stale per-row destination** — switching the Destination fleet now clears per-row remote destinations so the generator re-derives them from the newly selected fleet (e.g. `Hostbrr:` → `s3nginx:`).
 - **Accessibility** — strong `:focus-visible` for inputs, keyboard access + `aria-label` on browser items/buttons, removed `transition: all`, `overscroll-behavior: contain` on dialogs, touch-friendly defaults.
 
+## [1.0.8] - 2026-08-27
+
+### Changed
+- Patch release via auto-release workflow.
+
 ## [1.0.0] - 2026-08-26
 
 ### Added
@@ -100,5 +105,6 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
+
 
 
