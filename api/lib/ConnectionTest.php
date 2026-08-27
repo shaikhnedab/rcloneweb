@@ -46,15 +46,22 @@ class ConnectionTest {
                 escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($port ?: '21'), escapeshellarg($obscured));
         } else { // s3
             if ($accessKey === '' || $secretKey === null || $secretKey === '') return ['ok'=>false,'msg'=>'Access key and secret required'];
-            $obscured = trim((string)shell_exec('rclone obscure '.escapeshellarg($secretKey).' 2>/dev/null'));
-            $cmd = sprintf('rclone config create %s s3 provider %s region %s access_key_id %s secret_access_key %s --non-interactive 2>&1',
-                escapeshellarg($remote), escapeshellarg($provider), escapeshellarg($region), escapeshellarg($accessKey), escapeshellarg($obscured));
-            if ($endpoint) $cmd .= ' endpoint '.escapeshellarg($endpoint).' 2>&1';
+            // rclone config create expects raw secret (it obscures internally); passing already-obscured causes double-obscure and SignatureDoesNotMatch
+            $cmd = sprintf('rclone config create %s s3 provider %s region %s access_key_id %s secret_access_key %s --non-interactive',
+                escapeshellarg($remote), escapeshellarg($provider), escapeshellarg($region), escapeshellarg($accessKey), escapeshellarg($secretKey));
+            if ($endpoint) $cmd .= ' endpoint '.escapeshellarg($endpoint);
+            // Avoid 409 BucketAlreadyExists on existing buckets (Minio etc.)
+            $cmd .= ' no_check_bucket true';
+            $cmd .= ' 2>&1';
         }
 
         @shell_exec($cmd);
-        // probe
-        $probe = 'timeout 12 rclone lsd '.escapeshellarg($remote.':').' --max-depth 1 2>&1; echo __EXIT:$?';
+        // probe: for S3 with bucket, test the bucket directly to avoid ListBuckets permission issues and Signature region mismatches on account level
+        if ($type === 's3' && $bucket !== '') {
+            $probe = 'timeout 12 rclone lsd '.escapeshellarg($remote.':'.$bucket).' --max-depth 1 2>&1; echo __EXIT:$?';
+        } else {
+            $probe = 'timeout 12 rclone lsd '.escapeshellarg($remote.':').' --max-depth 1 2>&1; echo __EXIT:$?';
+        }
         $out = (string)shell_exec($probe);
         // cleanup
         @shell_exec('rclone config delete '.escapeshellarg($remote).' 2>&1');
@@ -65,10 +72,12 @@ class ConnectionTest {
         if ($code===0) return ['ok'=>true,'msg'=>'Connection OK'.($out ? " — ".substr($out,0,200) : '')];
         // humanize common errors
         $lower=strtolower($out);
-        if (str_contains($lower,'auth')||str_contains($lower,'password')||str_contains($lower,'login')) $out='Authentication failed — check user/password';
+        if (str_contains($lower,'signaturedoesnotmatch')) $out='S3 signature mismatch — check: 1) Region matches endpoint (e.g. us-east-1 for AWS, correct for Wasabi/Minio), 2) Endpoint URL is exact (https://... with no trailing slash), 3) System clock is correct (NTP), 4) Access/Secret key correct. Raw: '.substr($out,0,250);
+        elseif (str_contains($lower,'auth')||str_contains($lower,'password')||str_contains($lower,'login')) $out='Authentication failed — check user/password';
         elseif (str_contains($lower,'timeout')||str_contains($lower,'refused')||str_contains($lower,'no route')) $out='Cannot reach host — check host/port/firewall';
         elseif (str_contains($lower,'no such host')||str_contains($lower,'could not resolve')) $out='DNS lookup failed';
-        return ['ok'=>false,'msg'=>substr($out,0,400) ?: 'Connection failed'];
+        elseif (str_contains($lower,'403')||str_contains($lower,'accessdenied')) $out='S3 access denied — check bucket name, region, and IAM permissions (needs ListBuckets or bucket access)';
+        return ['ok'=>false,'msg'=>substr($out,0,500) ?: 'Connection failed'];
     }
 
     static function testSource(string $vpsId): array {

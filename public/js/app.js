@@ -137,10 +137,10 @@
     const row = document.createElement('div');
     row.className = 'source-row';
     row.innerHTML = `
-      <div class="src-with-browse"><input class="src-path" placeholder="/" spellcheck="false" aria-label="Source path" /><button type="button" class="btn tonal small browse-btn" data-kind="src" title="Browse VPS" aria-label="Browse source">📂</button></div>
-      <div class="src-with-browse"><input class="src-dest" placeholder="remote:/  (empty = /)" spellcheck="false" aria-label="Remote destination" /><button type="button" class="btn tonal small browse-btn" data-kind="dest" title="Browse remote" aria-label="Browse remote">☁️</button></div>
-      <input class="src-include" placeholder="include (e.g. *.jpg)" spellcheck="false" aria-label="Include pattern" />
-      <input class="src-exclude" placeholder="exclude (e.g. *.tmp)" spellcheck="false" aria-label="Exclude pattern" />
+      <div class="src-with-browse"><input class="src-path" placeholder="/" spellcheck="false" aria-label="Source path" /><button type="button" class="btn tonal small browse-btn" data-kind="src" title="Browse VPS" aria-label="Browse source folder">📂</button></div>
+      <div class="src-with-browse"><input class="src-dest" placeholder="remote:/  (empty = /)" spellcheck="false" aria-label="Remote destination" /><button type="button" class="btn tonal small browse-btn" data-kind="dest" title="Browse remote" aria-label="Browse destination">☁️</button></div>
+      <div class="src-with-browse"><input class="src-include" placeholder="include (e.g. *.jpg)" spellcheck="false" aria-label="Include pattern" /><button type="button" class="btn tonal small browse-btn" data-kind="include" title="Browse for include" aria-label="Browse to add include">📂</button></div>
+      <div class="src-with-browse"><input class="src-exclude" placeholder="exclude (e.g. *.tmp)" spellcheck="false" aria-label="Exclude pattern" /><button type="button" class="btn tonal small browse-btn" data-kind="exclude" title="Browse for exclude" aria-label="Browse to add exclude">📂</button></div>
       <button type="button" class="rm-btn" title="Remove source" aria-label="Remove source">✕</button>`;
     row.querySelector('.src-path').value = s.path || '';
     row.querySelector('.src-dest').value = s.dest || '';
@@ -379,16 +379,18 @@
     $('#f-s3-region').value=d.s3Region||'';
     $('#f-s3-endpoint').value=d.s3Endpoint||'';
     updateDestFields(); syncSecretFieldsVisibility();
-    // lock manual fields when using fleet
+    // lock manual fields when using fleet (but keep embed toggle usable)
     if(fieldset) fieldset.querySelectorAll('input, select').forEach(el=>{
-      if(el.id==='f-dest-fleet') return;
+      if(el.id==='f-dest-fleet' || el.id==='f-secrets-embed') return;
       el.disabled=true;
     });
-    $('#dest-fleet-hint').textContent=`Using saved destination "${d.name}" — switch to Manual to edit`;
+    $('#dest-fleet-hint').textContent=`Using saved destination "${d.name}" — password will be embedded from fleet (or use env var if unchecked) — switch to Manual to edit`;
   }
   function onDestFleetChange(){
     const id=$('#f-dest-fleet').value;
     applyDestFleetToForm(id);
+    // Destination switched — recompute per-row dests from the newly selected fleet
+    $$('#sources-list .source-row .src-dest').forEach(el => el.value = '');
     markDirty();
     refreshAll();
   }
@@ -460,11 +462,34 @@
   }
 
   // ---------- browse ----------
-  const browseState = { inputEl:null, kind:null, vpsId:null };
+  const browseState = { inputEl:null, kind:null, vpsId:null, multiselect:[] };
   function openBrowseForRow(row, kind){
+    // include/exclude also browse source VPS
+    if (kind==='include' || kind==='exclude') {
+      const input = row.querySelector(kind==='include' ? '.src-include' : '.src-exclude');
+      browseState.inputEl = input;
+      browseState.kind = kind;
+      const vpsId = ($('#f-source-vps')?.value) || '';
+      if (!vpsId) return toast('Select a Source VPS first (add one in Fleet)', true);
+      browseState.vpsId = vpsId;
+      const curVal = input.value.trim();
+      // include/exclude may be pattern like *.jpg or path - try to extract directory part
+      let initial = '/';
+      if (curVal) {
+        // if pattern contains /, take dir part
+        const slashIdx = curVal.lastIndexOf('/');
+        if (slashIdx > 0) initial = curVal.slice(0, slashIdx) || '/';
+        else if (curVal.startsWith('/')) initial = curVal;
+      }
+      openBrowseDialog({ title: `Browse for ${kind} — ${fleetState.list.find(v=>v.id===vpsId)?.name || vpsId}`, initialPath: initial, mode:'vps' });
+      // override browse select to insert pattern
+      browseState.isIncludeExclude = true;
+      return;
+    }
     const input = kind==='src' ? row.querySelector('.src-path') : row.querySelector('.src-dest');
     browseState.inputEl = input;
     browseState.kind = kind;
+    browseState.isIncludeExclude = false;
     if (kind==='src') {
       const vpsId = ($('#f-source-vps')?.value) || '';
       if (!vpsId) return toast('Select a Source VPS first (add one in Fleet)', true);
@@ -511,8 +536,25 @@
     browseCurrentPath = initialPath || (mode==='remote' ? '' : '/');
     $('#browse-title').textContent = title;
     $('#browse-path').value = browseCurrentPath;
+    // multiselect only for include/exclude
+    const multi = browseState.kind==='include' || browseState.kind==='exclude';
+    browseState.multiselect = [];
+    const multiBtn=$('#btn-browse-multi'), cntEl=$('#browse-select-count');
+    if(multiBtn) multiBtn.classList.toggle('hidden', !multi);
+    if(cntEl) cntEl.hidden = !multi;
+    updateBrowseMultiBadge();
     $('#browse-dialog').classList.add('open');
     loadBrowsePath(browseCurrentPath);
+  }
+  function updateBrowseMultiBadge(){
+    const n = browseState.multiselect.length;
+    const cntEl=$('#browse-select-count'); if(cntEl) { cntEl.textContent=`${n} selected`; cntEl.hidden = !(n); }
+    const multiBtn=$('#btn-browse-multi'); if(multiBtn) multiBtn.textContent=`Add selected (+${n})`;
+    // highlight selected rows in current list
+    $$('#browse-list .browse-item').forEach((el)=>{
+      const p = el.dataset.path;
+      el.classList.toggle('selected', !!p && browseState.multiselect.includes(p));
+    });
   }
   function closeBrowseDialog(){ $('#browse-dialog').classList.remove('open'); }
   async function loadBrowsePath(path){
@@ -546,8 +588,23 @@
       for (const e of data.entries) {
         const div = document.createElement('div');
         div.className = 'browse-item';
-        div.innerHTML = `<span>${e.isDir ? '📁' : '📄'}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>${e.isDir ? '<span class="hint">dir</span>' : ''}`;
-        div.addEventListener('click', ()=>{
+        div.dataset.path = e.path;
+        div.setAttribute('role', 'button');
+        div.setAttribute('tabindex', '0');
+        const multi = browseState.kind==='include' || browseState.kind==='exclude';
+        div.classList.toggle('multi', multi);
+        div.innerHTML = `<span>${e.isDir ? '📁' : '📄'}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span><span class="browse-check" aria-hidden="true">✓</span>${e.isDir ? '<span class="hint">dir</span>' : ''}`;
+        const selectItem = () => {
+          const multi = browseState.kind==='include' || browseState.kind==='exclude';
+          if (multi) {
+            // multi-select toggle (dirs and files)
+            const p = e.path;
+            const i = browseState.multiselect.indexOf(p);
+            if (i>=0) browseState.multiselect.splice(i,1); else browseState.multiselect.push(p);
+            div.classList.toggle('selected', i<0);
+            updateBrowseMultiBadge();
+            return;
+          }
           if (e.isDir) {
             loadBrowsePath(e.path);
           } else {
@@ -557,6 +614,10 @@
             browseState.selectedPath = e.path;
             $('#browse-path').value = e.path;
           }
+        };
+        div.addEventListener('click', selectItem);
+        div.addEventListener('keydown', (ev)=>{
+          if (ev.key==='Enter' || ev.key===' ') { ev.preventDefault(); selectItem(); }
         });
         div.addEventListener('dblclick', ()=>{
           if (e.isDir) loadBrowsePath(e.path);
@@ -570,6 +631,26 @@
     }
   }
   function confirmBrowseSelect(){
+    // multiselect (include/exclude): append all selected (or dirs-not-yet-in when empty)
+    if (browseState.kind==='include' || browseState.kind==='exclude') {
+      let paths = browseState.multiselect.slice();
+      // if nothing explicitly multiselected, fall back to the current file selection/path
+      if (!paths.length) {
+        const single = browseState.selectedPath || $('#browse-path').value.trim();
+        if (single) paths.push(single);
+      }
+      if (!paths.length) return;
+      const existing = (browseState.inputEl.value||'').trim();
+      const parts = existing ? existing.split(/[,\s]+/).filter(Boolean) : [];
+      paths.forEach((p)=>{
+        const raw = p.startsWith('/') ? p : '/'+p;
+        if (!parts.includes(raw)) parts.push(raw);
+      });
+      browseState.inputEl.value = parts.join(', ');
+      closeBrowseDialog();
+      onChange();
+      return;
+    }
     let sel = browseState.selectedPath || $('#browse-path').value.trim();
     if (!sel) return;
     if (browseState.kind === 'dest') {
@@ -1522,6 +1603,8 @@
     });
     $('#btn-browse-cancel').addEventListener('click', closeBrowseDialog);
     $('#btn-browse-select').addEventListener('click', confirmBrowseSelect);
+    const multiBtn=$('#btn-browse-multi');
+    if(multiBtn) multiBtn.addEventListener('click', confirmBrowseSelect);
     $('#browse-dialog').addEventListener('click', (e)=>{ if(e.target.id==='browse-dialog') closeBrowseDialog(); });
     $('#browse-path').addEventListener('keydown', (e)=>{ if(e.key==='Enter') loadBrowsePath(e.target.value.trim()||'/'); });
 

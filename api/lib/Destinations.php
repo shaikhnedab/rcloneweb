@@ -60,9 +60,9 @@ class Destinations {
         $d = self::read($id);
         if (!$d) return null;
         $d['password'] = self::decrypt($d['passwordEnc'] ?? null);
-        $d['s3AccessKey'] = self::decrypt($d['s3AccessDec'] ?? null) ?? ($d['s3AccessKey'] ?? '');
-        // legacy fallback
-        if (isset($d['s3AccessKeyEnc'])) $d['s3AccessKey'] = self::decrypt($d['s3AccessEnc'] ?? null) ?? $d['s3AccessKey'];
+        $d['s3AccessKey'] = self::decrypt($d['s3AccessEnc'] ?? null) ?? ($d['s3AccessKey'] ?? '');
+        // legacy fallback for older key name
+        if (empty($d['s3AccessKey']) && isset($d['s3AccessKeyEnc'])) $d['s3AccessKey'] = self::decrypt($d['s3AccessKeyEnc'] ?? null) ?? $d['s3AccessKey'];
         $d['s3SecretKey'] = self::decrypt($d['s3SecretEnc'] ?? null);
         return $d;
     }

@@ -71,6 +71,48 @@ const Generator = (() => {
 
   const srcBase = (p) => String(p).split('/').filter(Boolean).pop() || '.';
   const cleanPath = (p) => String(p).replace(/^\/+|\/+$/g, '');
+
+  // Convert an explicit include/exclude entry into one or more rclone --filter
+  // rules relative to the source directory, so patterns match regardless of the
+  // source prefix and avoid rclone's implicit default-include mismatch.
+  // Convention: absolute paths are made relative to the row's source path;
+  // already-relative globs (no leading /) are kept as-is.
+  const toFilterRules = (entry, srcPath, sign) => {
+    const src = cleanPath(srcPath); // '/home/mysqldump' -> 'home/mysqldump'
+    let rel = cleanPath(String(entry).trim());
+    // If entry is absolute and under the source dir, strip the source prefix.
+    if (entry.startsWith('/') && src) {
+      if (rel === src) return [`${sign} *`]; // whole dir
+      if (rel.startsWith(src + '/')) rel = rel.slice(src.length + 1);
+      else rel = cleanPath(entry); // outside source: keep as provided-relative (best effort)
+    }
+    if (!rel) return [];
+    // Treat an entry with no file-extension as a directory: match it and
+    // everything beneath via `/**` (2-star recursion; rclone rejects 3-star).
+    // A bare filename keeps a single rule.
+    const hasExtension = /\.[A-Za-z0-9]{1,16}$/.test(rel);
+    const rules = [`${sign} ${rel}`];
+    if (!hasExtension) rules.push(`${sign} ${rel}/**`);
+    return rules;
+  };
+  // Build the rclone filter + bwlimit token LIST for a given source row.
+  // Returns an array of already-shell-quoted words (e.g. `--filter '+ x'`) that
+  // the script stores as a bash array so word-splitting keeps each arg intact.
+  const filterExtraFor = (s, bwRaw) => {
+    const rules = [];
+    const appendRel = (entry, sign) =>
+      toFilterRules(entry, s.path, sign).forEach((r) => {
+        if (!rules.includes(r)) rules.push(r);
+      });
+    if (s.include) s.include.split(/[,\s]+/).filter(Boolean).forEach((p) => appendRel(p, '+'));
+    if (s.exclude) s.exclude.split(/[,\s]+/).filter(Boolean).forEach((p) => appendRel(p, '-'));
+    // when whitelisting, default everything else to excluded
+    if (s.include) rules.push('- *');
+    const tokens = [];
+    for (const r of rules) tokens.push('--filter ' + shq(r));
+    if (bwRaw && bwRaw.toLowerCase() !== 'off') tokens.push('--bwlimit ' + shq(bwRaw));
+    return tokens;
+  };
   const destForSource = (s, cfg) => {
     const raw = String(s.dest || '').trim();
     if (raw) {
@@ -129,44 +171,46 @@ const Generator = (() => {
   function buildConfigCreate(cfg) {
     const t = cfg.dest;
     const emb = cfg.secrets.embed;
-    const existsCheck = `if ! rclone listremotes | grep -q ${shq(`^${t.remoteName}:$`)}; then`;
+    // (re)create is idempotent and overwrites any stale/wrong-cred remote, so a
+    // previously-defined remote (e.g. from an earlier bad run) always gets the
+    // credentials baked in this script instead of silently being reused.
+    const setupHeader = (label) =>
+      `echo "[setup] configuring rclone remote '${t.remoteName}' (${label})..." `;
     const L = [];
 
     if (t.type === 'sftp') {
-      L.push(existsCheck);
-      L.push(`  echo "[setup] creating rclone remote '${t.remoteName}' (sftp)..." `);
-      L.push(`  rclone config create ${shq(t.remoteName)} sftp \\`);
-      L.push(`    host ${shq(t.host)} user ${shq(t.user)} \\`);
-      if (t.port) L.push(`    port ${shq(t.port)} \\`);
+      L.push(setupHeader('sftp'));
+      L.push(`rclone config create ${shq(t.remoteName)} sftp \\`);
+      L.push(`  host ${shq(t.host)} user ${shq(t.user)} \\`);
+      if (t.port) L.push(`  port ${shq(t.port)} \\`);
       if (t.sftpAuth === 'key') {
-        L.push(`    key_file ${shq(t.keyPath)}`);
+        L.push(`  key_file ${shq(t.keyPath)}`);
       } else if (emb) {
-        L.push(`    pass "$(_obscure ${shq(cfg.secrets.password)})"`);
+        L.push(`  pass "$(_obscure ${shq(cfg.secrets.password)})"`);
       } else {
-        L.push(`    pass "$(_obscure "$FTP_PASS")"`);
+        L.push(`  pass "$(_obscure "$FTP_PASS")"`);
       }
-      L.push('fi');
     } else if (t.type === 'ftp') {
-      L.push(existsCheck);
-      L.push(`  echo "[setup] creating rclone remote '${t.remoteName}' (ftp)..." `);
-      L.push(`  rclone config create ${shq(t.remoteName)} ftp \\`);
-      L.push(`    host ${shq(t.host)} user ${shq(t.user)} \\`);
-      if (t.port) L.push(`    port ${shq(t.port)} \\`);
-      if (emb) L.push(`    pass "$(_obscure ${shq(cfg.secrets.password)})"`);
-      else L.push(`    pass "$(_obscure "$FTP_PASS")"`);
-      L.push('fi');
+      L.push(setupHeader('ftp'));
+      L.push(`rclone config create ${shq(t.remoteName)} ftp \\`);
+      L.push(`  host ${shq(t.host)} user ${shq(t.user)} \\`);
+      if (t.port) L.push(`  port ${shq(t.port)} \\`);
+      if (emb) L.push(`  pass "$(_obscure ${shq(cfg.secrets.password)})"`);
+      else L.push(`  pass "$(_obscure "$FTP_PASS")"`);
     } else { // s3
-      L.push(existsCheck);
-      L.push(`  echo "[setup] creating rclone remote '${t.remoteName}' (s3)..." `);
-      L.push(`  rclone config create ${shq(t.remoteName)} s3 \\`);
-      L.push(`    provider ${shq(t.s3Provider)} region ${shq(t.s3Region)} \\`);
-      if (t.s3Endpoint) L.push(`    endpoint ${shq(t.s3Endpoint)} \\`);
+      L.push(setupHeader('s3'));
+      L.push(`rclone config create ${shq(t.remoteName)} s3 \\`);
+      L.push(`  provider ${shq(t.s3Provider)} region ${shq(t.s3Region)} \\`);
+      if (t.s3Endpoint) L.push(`  endpoint ${shq(t.s3Endpoint)} \\`);
       if (emb) {
-        L.push(`    access_key_id ${shq(cfg.secrets.s3AccessKey)} secret_access_key "$(_obscure ${shq(cfg.secrets.s3SecretKey)})"`);
+        // Pass the RAW secret: rclone config create obscures secret fields
+        // internally. Pre-obscuring here would double-obscure and cause
+        // SignatureDoesNotMatch on S3.
+        L.push(`  access_key_id ${shq(cfg.secrets.s3AccessKey)} secret_access_key ${shq(cfg.secrets.s3SecretKey)} \\`);
       } else {
-        L.push('    access_key_id "$AWS_ACCESS_KEY_ID" secret_access_key "$(_obscure "$AWS_SECRET_ACCESS_KEY")"');
+        L.push('  access_key_id "$AWS_ACCESS_KEY_ID" secret_access_key "$AWS_SECRET_ACCESS_KEY" \\');
       }
-      L.push('fi');
+      L.push('  no_check_bucket true');
     }
     return L.join('\n');
   }
@@ -288,17 +332,15 @@ const Generator = (() => {
       L.push(`  "${escPath} ${escDest}"`);
     }
     L.push(')');
-    // per-source include/exclude/bandwidth arrays for loop
+    // per-source include/exclude/bandwidth: one quoted token array per source row
+    // (sync_extra_0, sync_extra_1, ...) so each `--filter '+ x'` arg stays intact
+    // when expanded with "${sync_extra_N[@]}".
     if (cfg.sources.some(s=> s.include || s.exclude) || (o.bandwidth && o.bandwidth.toLowerCase() !== 'off')) {
-      L.push('sync_extra=(');
-      for (const s of cfg.sources) {
-        let extra = '';
-        if (s.include) extra += s.include.split(/[,\s]+/).filter(Boolean).map(p=>`--include ${shq(p)}`).join(' ') + ' ';
-        if (s.exclude) extra += s.exclude.split(/[,\s]+/).filter(Boolean).map(p=>`--exclude ${shq(p)}`).join(' ') + ' ';
-        if (o.bandwidth && o.bandwidth.toLowerCase() !== 'off') extra += `--bwlimit ${shq(o.bandwidth)} `;
-        L.push(`  ${shq(extra.trim())}`);
-      }
-      L.push(')');
+      cfg.sources.forEach((s, i) => {
+        const toks = filterExtraFor(s, o.bandwidth);
+        const inner = toks.length ? toks.join(' ') : '""';
+        L.push(`sync_extra_${i}=(${inner})`);
+      });
     }
     L.push('');
     L.push('# Send start notification');
@@ -308,12 +350,12 @@ const Generator = (() => {
     L.push('for idx in "${!sync_paths[@]}"; do');
     L.push('    sync_path="${sync_paths[$idx]}"');
     // handle per-source extra if exists, otherwise just use RCLONE_OPTS
-    if (cfg.sources.some(s=> s.include || s.exclude)) {
-      L.push('    extra="${sync_extra[$idx]}"');
+    if (cfg.sources.some(s=> s.include || s.exclude) || (o.bandwidth && o.bandwidth.toLowerCase() !== 'off')) {
+      L.push('    eval "set -- \\"\\${sync_extra_$idx[@]}\\""; ');
       L.push(`    echo "Starting sync for: $sync_path"`);
     L.push('    send_discord_notification "🔃 Sync Started" "**Path:** \\`$sync_path\\`\n**Start Time:** $(date)\n**Status:** Sync in progress." 15844367');
     L.push('    # rclone mode from config: ' + (o.mode === 'copy' ? 'copy' : 'sync'));
-    L.push(`    if rclone ${o.mode} $sync_path $extra $RCLONE_OPTS $DRYRUN_FLAG; then`);
+    L.push(`    if rclone ${o.mode} $sync_path "$@" $RCLONE_OPTS $DRYRUN_FLAG; then`);
     } else {
       L.push(`    echo "Starting sync for: $sync_path"`);
       L.push('    send_discord_notification "🔃 Sync Started" "**Path:** \\`$sync_path\\`\n**Start Time:** $(date)\n**Status:** Sync in progress." 15844367');

@@ -2,10 +2,19 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
-## [1.0.1] - 2026-08-26
+## [1.0.1] - 2026-08-27
 
-### Changed
-- Patch release via auto-release workflow.
+### Added
+- **Asynchronous runs** — `POST /api/scripts/:id/run` now returns immediately (≈ms) and streams output via a background monitor (`api/lib/monitor.php`); the panel no longer blocks while a backup runs.
+- **Multi-select include/exclude** — the folder browser now supports selecting several files/folders at once and appending them as comma-separated patterns to a source row.
+- **Signal-search include/exclude** — include/exclude rewritten as rclone `--filter` rules computed relative to each source folder (with a trailing `- *` whitelist), eliminating the `Using --filter is recommended` warning and the "nothing to transfer" misses.
+
+### Fixed
+- **Panel hang on run** — runs were blocking the HTTP request (600s) because the monitor wasn't wired; now fully async.
+- **S3 `SignatureDoesNotMatch`** — embedded S3 scripts passed a pre-obscured secret to `rclone config create`, double-obscuring it. S3 secrets are now passed raw; the remote is (re)created idempotently so stale/wrong-cred remotes are refreshed every run.
+- **S3 browse/mkdir via saved destination** — used the stored access key correctly (`s3AccessEnc`) and verified bucket access before treating a folder as created.
+- **Stale per-row destination** — switching the Destination fleet now clears per-row remote destinations so the generator re-derives them from the newly selected fleet (e.g. `Hostbrr:` → `s3nginx:`).
+- **Accessibility** — strong `:focus-visible` for inputs, keyboard access + `aria-label` on browser items/buttons, removed `transition: all`, `overscroll-behavior: contain` on dialogs, touch-friendly defaults.
 
 ## [1.0.0] - 2026-08-26
 
@@ -31,5 +40,6 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
 

@@ -1,6 +1,7 @@
 # 📦 rcloneweb — Beautiful rclone backup panel
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.1-00E5CC?style=for-the-badge&logo=github" />
   <img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=for-the-badge&logo=php&logoColor=white" />
   <img src="https://img.shields.io/badge/rclone-v1.75-3A9BDC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Nginx-Apache-269539?style=for-the-badge&logo=nginx" />
@@ -27,7 +28,7 @@
 | **☁️ Fleet** | **VPS Fleet** (SSH) + **Destination Fleet** (SFTP/FTP/S3) — save once, pick from dropdown with `Manual` fallback |
 | **📂 Browse** | Click `📂/☁️` to browse VPS + remote storage, create folders inline (`📁 New Folder`) |
 | **🔔 Discord** | Per-stage notifications (`🚀 Started → 🔃 Sync → ✅/❌ → 🎉 Completed`) + log file attachment via `send_discord_log` |
-| **▶ Run & Logs** | Beautiful live card (progress, steps, spinner) + compact live terminal (last 12 lines) + full log, `DRY_RUN=1`, `Stop`, `Clear`, `Download` |
+| **▶ Run & Logs** | Beautiful live card (progress, steps, spinner) + compact live terminal (last 12 lines) + full log, `DRY_RUN=1`, `Stop`, `Clear`, `Download` — **runs asynchronously** so the panel never hangs |
 | **⏰ Schedule** | In-panel cron builder (Every N min / hourly / daily / weekly / monthly / custom), timezone-aware (`Asia/Kolkata` etc.), panel runs it + `cron.php` fallback, edit/toggle/delete |
 | **🔐 Auth** | First-run setup, `HttpOnly` `rw_session` (30d HMAC), `sodium` encrypted fleet secrets |
 | **🎨 Theme** | Material 3 — dark / light toggle, fully responsive (880px/520px), Inter + JetBrains Mono |

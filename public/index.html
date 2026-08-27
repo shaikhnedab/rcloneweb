@@ -102,10 +102,10 @@
             <fieldset>
               <legend><span class="step-num">0</span> Source VPS</legend>
               <div class="row">
-                <label class="field grow" for="f-source-vps">Run on <select id="f-source-vps"><option value="local">localhost (panel host)</option></select></label>
+                <label class="field grow" for="f-source-vps">Run on <select id="f-source-vps"><option value="">— Select VPS —</option></select></label>
                 <button id="btn-test-source" class="btn tonal small" title="Test SSH connection to selected source" aria-label="Test source connection">🔍 Test</button>
               </div>
-              <p class="hint" id="source-hint">Leave on localhost to run here, or select a fleet VPS to execute remotely via SSH.</p>
+              <p class="hint" id="source-hint">Select a fleet VPS to execute the backup via SSH. Add VPSs in the Fleet sidebar.</p>
             </fieldset>
 
             <fieldset>
@@ -269,7 +269,7 @@ Duration: {DURATION}</textarea>
       <!-- RUN TAB -->
       <div id="tab-run" class="tab-panel">
         <div class="row wrap" style="align-items:center">
-          <label class="field">Run on <select id="f-run-vps"><option value="local">localhost</option></select></label>
+          <label class="field">Run on <select id="f-run-vps"><option value="">— Select VPS —</option></select></label>
           <button id="btn-run" class="btn filled">▶ Run now</button>
           <button id="btn-run-dry" class="btn tonal">🧪 Dry run</button>
           <button id="btn-run-stop" class="btn danger hidden">🛑 Stop</button>
@@ -476,9 +476,11 @@ Duration: {DURATION}</textarea>
     <div class="row" style="margin-top:4px">
       <button id="btn-browse-mkdir" class="btn tonal small">📁 New Folder</button>
       <span class="hint">Create directory in current path</span>
+      <span id="browse-select-count" class="hint" hidden>0 selected</span>
     </div>
     <div class="dlg-actions">
       <button id="btn-browse-cancel" class="btn ghost">Cancel</button>
+      <button id="btn-browse-multi" class="btn tonal hidden" title="Add all selected paths to include/exclude">Add selected (+0)</button>
       <button id="btn-browse-select" class="btn filled">Select</button>
     </div>
   </div>

@@ -63,48 +63,22 @@ class Runs {
         file_put_contents($tmp, $doc['script']);
         @chmod($tmp,0700);
 
-        $descriptors = [0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']];
-        $env = array_merge((getenv()?:[]), ['DRY_RUN'=>$dryRun?'1':'0','TERM'=>'dumb']);
-        // use setsid-friendly command via bash
-        $proc = proc_open('bash '.escapeshellarg($tmp), $descriptors, $pipes, '/tmp', $env);
-        if (!is_resource($proc)) { @unlink($tmp); return null; }
-        // close stdin
-        fclose($pipes[0]);
-        // non-blocking read via stream_set_blocking false + poll
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        // persist immediately
+        // persist immediately so the panel sees a running run
         $runs=self::read($scriptId,$vpsId);
         array_unshift($runs,$rec);
         self::write($scriptId,$vpsId,$runs);
 
-        // background monitor
-        $pid = null;
-        $status = proc_get_status($proc);
-        $pid = $status['pid'] ?? null;
-
-        // fork monitor via nohup-like background poller: we use a detached helper
-        // simplest: poll in same request but with timeout? For PHP-FPM we need async.
-        // Use fastcgi_finish_request if available, then loop.
-        if (function_exists('fastcgi_finish_request')) {
-            // send 202 already sent by caller; continue in background
-        }
-
-        // store pid for stop
+        $meta = ['pid'=>0,'tmp'=>$tmp,'scriptId'=>$scriptId,'vpsId'=>$vpsId,'dryRun'=>$dryRun];
         $metaFile = self::DIR.'/.pid-'.$runId.'.json';
-        file_put_contents($metaFile, json_encode(['pid'=>$pid,'tmp'=>$tmp,'scriptId'=>$scriptId,'vpsId'=>$vpsId]), LOCK_EX);
 
-        // async monitor: spawn a background php process to watch
-        $monitorPhp = __DIR__.'/monitor.php';
-        // monitor.php will be created alongside
-        if (file_exists($monitorPhp)) {
-            $cmd = 'php '.escapeshellarg($monitorPhp).' '.escapeshellarg($runId).' '.escapeshellarg($scriptId).' '.escapeshellarg($vpsId?:'local').' > /dev/null 2>&1 &';
-            @exec($cmd);
-        } else {
-            // fallback: synchronous poll with timeout (still works for short scripts)
-            self::pollProc($proc,$pipes,$runId,$scriptId,$vpsId,$tmp,$rec);
-        }
+        // the monitor owns proc_open; hand it the command + run id
+        $monitorCmd = 'bash '.escapeshellarg($tmp).' 2>&1; echo __EXIT:$?';
+        // set pid stub now (monitor replaces it with the real setsid pgid)
+        $meta['pid']=0;
+        file_put_contents($metaFile, json_encode($meta, JSON_UNESCAPED_SLASHES), LOCK_EX);
+        file_put_contents(self::DIR.'/.cmd-'.$runId, $monitorCmd);
+
+        @exec('php '.escapeshellarg(__DIR__.'/monitor.php').' '.escapeshellarg($runId).' local > /dev/null 2>&1 &');
         return $rec;
     }
 
@@ -151,31 +125,13 @@ class Runs {
         $rec['output'] = "[remote] executing on {$vps['host']}...\n";
         $runs=self::read($scriptId,$vpsId); array_unshift($runs,$rec); self::write($scriptId,$vpsId,$runs);
 
-        // run async via background ssh
+        // run async via background monitor (returns immediately; panel stays responsive)
         $metaFile = self::DIR.'/.pid-'.$runId.'.json';
-        file_put_contents($metaFile, json_encode(['remote'=>true,'vpsId'=>$vpsId,'remoteTmp'=>$remoteTmp,'scriptId'=>$scriptId,'tmpLocal'=>$tmpLocal]), LOCK_EX);
+        $meta = ['remote'=>true,'vpsId'=>$vpsId,'remoteTmp'=>$remoteTmp,'scriptId'=>$scriptId,'tmpLocal'=>$tmpLocal,'dryRun'=>$dryRun,'pid'=>0];
+        file_put_contents($metaFile, json_encode($meta, JSON_UNESCAPED_SLASHES), LOCK_EX);
+        file_put_contents(self::DIR.'/.cmd-'.$runId, $fullSsh);
 
-        $monitorPhp = __DIR__.'/monitor_remote.php';
-        if (file_exists($monitorPhp)) {
-            $cmd = 'php '.escapeshellarg($monitorPhp).' '.escapeshellarg($runId).' > /dev/null 2>&1 &';
-            @exec($cmd);
-            // also kick immediate ssh in background via monitor
-            file_put_contents(self::DIR.'/.cmd-'.$runId, $fullSsh);
-        } else {
-            // synchronous fallback (blocks request but still records)
-            $r = self::execTimeout($fullSsh, 600);
-            $rec['output'] .= $r['out'];
-            $rec['finishedAt']=gmdate('c');
-            // parse exit
-            if (preg_match('/__EXIT:(\d+)\s*$/',$r['out'],$m)) $rec['exitCode']=(int)$m[1]; else $rec['exitCode']=$r['code'];
-            $rec['output'] = str_replace("__EXIT:{$rec['exitCode']}",'', $rec['output']);
-            $runs=self::read($scriptId,$vpsId);
-            // replace first entry
-            foreach ($runs as &$x) if ($x['id']===$runId) $x=$rec;
-            self::write($scriptId,$vpsId,$runs);
-            @unlink($tmpLocal);
-            Fleet::touchSeen($vpsId);
-        }
+        @exec('php '.escapeshellarg(__DIR__.'/monitor.php').' '.escapeshellarg($runId).' remote > /dev/null 2>&1 &');
         return $rec;
     }
 
