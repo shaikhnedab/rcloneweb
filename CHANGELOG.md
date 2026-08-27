@@ -2,6 +2,11 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.6] - 2026-08-27
+
+### Fixed
+- **Nginx served `api/index.php` as raw PHP source (auth API broken)** — in the Nginx guide the `location ~ ^/(api|raw|i)` block was defined *before* `location ~ \.php$`. Its `try_files ... /api/index.php` fallback re-matched the same api regex, so nginx returned `api/index.php` as a static file (`content-type: application/octet-stream`, body starting with `<?php`) instead of executing it via php-fpm. `GET /api/auth/status` therefore returned PHP source, not JSON, so the SPA could never authenticate. The `\.php$` block is now defined **before** the API block so the fallback executes. Same reorder applied to `nginx/rcloneweb.conf` (new standalone config for easy paste into a Nginx UI).
+
 ## [1.0.5] - 2026-08-27
 
 ### Fixed
@@ -78,6 +83,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.6]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.6
 [1.0.5]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.5
 [1.0.4]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.4
 [1.0.3]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.3

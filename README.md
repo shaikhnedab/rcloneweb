@@ -91,15 +91,10 @@ server {
     location ^~ /css/ { alias /var/www/rcloneweb/public/css/; expires 7d; access_log off; add_header Cache-Control "public"; }
     location ^~ /js/  { alias /var/www/rcloneweb/public/js/;  expires 7d; access_log off; add_header Cache-Control "public"; }
 
-    # Front-controller for SPA + API/raw
-    location / {
-        try_files $uri $uri/ /index.php?$args;
-    }
-
-    location ~ ^/(api|raw|i)(/|$) {
-        try_files $uri /api/index.php?$args;
-    }
-
+    # PHP MUST be defined BEFORE the /api location below. The API block's
+    # try_files fallback points at /api/index.php; if the api regex matched first,
+    # nginx would serve that .php as STATIC source instead of executing it (you'd
+    # see raw `<?php` for /api/auth/status). Order fixes it.
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_pass unix:/run/php/php8.5-fpm.sock;
@@ -109,6 +104,16 @@ server {
         fastcgi_buffers 8 16k;
         fastcgi_buffer_size 32k;
         client_max_body_size 10M;
+    }
+
+    # Front-controller for SPA + API/raw
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    # API/raw routing — defined AFTER \.php$ so the /api/index.php fallback executes.
+    location ~ ^/(api|raw|i)(/|$) {
+        try_files $uri /api/index.php?$args;
     }
 
     location ~ ^/data/.*\.php$ { deny all; return 404; }
