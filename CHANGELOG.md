@@ -2,6 +2,11 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.4] - 2026-08-27
+
+### Fixed
+- **Auth bypass: fresh setup auto-login & logout not clearing session** — `Auth::validSession()` only checked HMAC/expiry, so a stale `rw_session` cookie (e.g. after `rm data/auth.json` while keeping `data/.secret`) stayed valid and `GET /api/auth/status` returned `authenticated:true` even though no admin existed, and `POST /api/auth/logout` cleared the cookie without `Secure`/`SameSite` so a Secure cookie persisted. Now `validSession()` returns `false` when `data/auth.json` is missing and verifies the cookie's username matches the stored admin, and logout clears with `SameSite=Lax; Secure` when the request is HTTPS (`X-Forwarded-Proto: https`).
+
 ## [1.0.3] - 2026-08-27
 
 ### Added
@@ -65,6 +70,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.4]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.4
 [1.0.3]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.3
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1

@@ -49,9 +49,14 @@ class Auth {
 
     static function validSession(?string $cookie): bool {
         if (!$cookie) return false;
+        // No users exist → no session can be valid (prevents stale cookie auto-login on fresh setup)
+        $a = self::read();
+        if (!$a) return false;
         $parts = explode('.', $cookie);
         if (count($parts) !== 3) return false;
         [$user, $exp, $sig] = $parts;
+        // Session must belong to the current admin user
+        if (!hash_equals((string)($a['username'] ?? ''), $user)) return false;
         $payload = $user . '.' . $exp;
         if (!hash_equals(self::sign($payload), $sig)) return false;
         return (int)$exp > (int)(microtime(true)*1000);
