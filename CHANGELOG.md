@@ -2,6 +2,15 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.7] - 2026-08-27
+
+### Added
+- **Full SSL Nginx config** — new `nginx/rcloneweb.ssl.conf` with a complete `listen 443 ssl http2` server block + `80 → 443` redirect (certbot cert paths), correct location ordering (PHP before API), `fastcgi_param HTTPS on`, and HSTS/`X-Frame-Options` headers. Ready to paste for raw-nginx deployments.
+- **Reset-admin docs** — README Troubleshooting now documents the data-preserving password reset: `rm data/auth.json` (keeping `data/.secret`) preserves all scripts, fleet, destinations, schedules, and run logs while letting you recreate the admin.
+
+### Fixed
+- **SSL "Option A" 443 example ordering** — `README.md` manual 443 block had the `^/(api|raw|i)` location before `\.php$`, so the `/api/index.php` fallback was served as static PHP source. Reordered so PHP executes first (matches the 1.0.6 HTTP fix).
+
 ## [1.0.6] - 2026-08-27
 
 ### Fixed
@@ -59,11 +68,6 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - **Stale per-row destination** — switching the Destination fleet now clears per-row remote destinations so the generator re-derives them from the newly selected fleet (e.g. `Hostbrr:` → `s3nginx:`).
 - **Accessibility** — strong `:focus-visible` for inputs, keyboard access + `aria-label` on browser items/buttons, removed `transition: all`, `overscroll-behavior: contain` on dialogs, touch-friendly defaults.
 
-## [1.0.7] - 2026-08-27
-
-### Changed
-- Patch release via auto-release workflow.
-
 ## [1.0.0] - 2026-08-26
 
 ### Added
@@ -88,6 +92,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.7]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.7
 [1.0.6]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.6
 [1.0.5]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.5
 [1.0.4]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.4

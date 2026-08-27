@@ -56,7 +56,7 @@ sudo apt install -y sshpass
 rclone version  # → v1.75+
 
 # 5. Run — built-in PHP (dev)
-php -S 1.0.7.0:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php &
+php -S 127.0.0.1:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php &
 # → http://YOUR_VPS_IP:8765
 # Login: admin / hunter2hunter (first run will ask to create it, then delete data/auth.json to reset)
 
@@ -129,7 +129,7 @@ sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d panel.
 
 **Option B — Nginx reverse proxy to `php -S` (simple, no php-fpm needed)**
 
-If you run `php -S 1.0.7.0:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php`:
+If you run `php -S 127.0.0.1:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php`:
 
 ```nginx
 server {
@@ -140,7 +140,7 @@ server {
     location ~ ^/(data|\.git|\.env) { deny all; return 404; }
 
     location / {
-        proxy_pass http://1.0.7.1:8765;
+        proxy_pass http://127.0.0.1:8765;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -196,15 +196,21 @@ server {
     location ~ /\. { deny all; access_log off; log_not_found off; }
     location ^~ /css/ { alias /var/www/rcloneweb/public/css/; expires 7d; access_log off; }
     location ^~ /js/  { alias /var/www/rcloneweb/public/js/;  expires 7d; access_log off; }
-    location / { try_files $uri $uri/ /index.php?$args; }
-    location ~ ^/(api|raw|i)(/|$) { try_files $uri /api/index.php?$args; }
+
+    # PHP MUST come before the /api block (same reason as the HTTP guide): the
+    # API try_files fallback points at /api/index.php; if the api regex matched
+    # first, nginx would serve that .php as static source instead of executing it.
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_pass unix:/run/php/php8.5-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTPS on;   # ensures app issues Secure cookies + HSTS
         fastcgi_read_timeout 600;
         client_max_body_size 10M;
     }
+
+    location / { try_files $uri $uri/ /index.php?$args; }
+    location ~ ^/(api|raw|i)(/|$) { try_files $uri /api/index.php?$args; }
 }
 ```
 
@@ -221,7 +227,7 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     location ~ ^/(data|\.git|\.env) { deny all; return 404; }
     location / {
-        proxy_pass http://1.0.7.1:8765;
+        proxy_pass http://127.0.0.1:8765;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -315,9 +321,10 @@ If `rclone` is missing on a source VPS, the **Test** button will warn: `SSH OK, 
 | `/: Is a directory` in logs | Was unescaped Markdown backticks — fixed in current `generator.js` (now `\`$sync_path\``). Click **↻ Regenerate** on old scripts and Save. |
 | `530 Login incorrect` (FTP) | Re-test destination with `🔍 Test`, ensure `FTP_PASS` or embedded password matches `rclone@storage...` |
 | Duplicate runs | Panel now blocks concurrent `POST /api/scripts/:id/run` with `409` and disables **▶ Run** while `running` |
-| `css/style.css` 404 / no styles behind Nginx | Old guide used `try_files $uri @fallback` with undefined fallback and `location ~* \.(css\|js)$` that shadowed the `alias`. Use the fixed `^~ /css/` + `^~ /js/` alias in **Option A**, or if you proxy (`proxy_pass http://1.0.7.1:8765`) do **not** also set `root` + `try_files` in the same `location /` — pick one option. Check `nginx -T` for duplicate `location /`. |
+| `css/style.css` 404 / no styles behind Nginx | Old guide used `try_files $uri @fallback` with undefined fallback and `location ~* \.(css\|js)$` that shadowed the `alias`. Use the fixed `^~ /css/` + `^~ /js/` alias in **Option A**, or if you proxy (`proxy_pass http://127.0.0.1:8765`) do **not** also set `root` + `try_files` in the same `location /` — pick one option. Check `nginx -T` for duplicate `location /`. |
 | Can't log in / first-run account not created | On first run `data/auth.json` doesn't exist → `GET /api/auth/status` returns `setupNeeded:true`. The panel shows **Create the first admin account**. If you see the login form but setup fails with `409 Setup already completed`, someone already created it — delete `data/auth.json` + `data/.secret` on the server and refresh ( `rm data/auth.json data/.secret` ). Ensure `data/` is writable by php-fpm/www-data (`chown www-data:www-data data && chmod 750 data`). |
 | `Setup already completed` but forgot password | `rm data/auth.json data/.secret` then refresh to re-create admin (fleet secrets will be re-encrypted with new key — re-save fleet entries). |
+| Forgot admin password — **keep all data** | `rm /var/www/rcloneweb/data/auth.json` (leave `data/.secret`). Refresh → **Create the first admin account**. Your scripts, fleet VPS list, destinations, schedules, and run logs are untouched, and fleet passwords stay decryptable because `data/.secret` is unchanged. Only add `data/.secret` to the `rm` if you also want to rotate the session-signing key (then re-enter fleet passwords once). |
 
 ---
 
