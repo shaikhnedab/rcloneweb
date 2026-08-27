@@ -1,6 +1,8 @@
 <?php
 // router for php -S; apache/nginx use .htaccess
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+// block sensitive paths even on dev server (mirrors nginx deny)
+if (preg_match('#^/(data|\.git|\.env)(\/|$)#', $uri)) { http_response_code(404); exit; }
 if (preg_match('#^/(api|raw|i)(/|$)#', $uri)) {
     require __DIR__ . '/api/index.php';
     exit;

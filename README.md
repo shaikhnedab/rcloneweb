@@ -1,7 +1,7 @@
 # 📦 rcloneweb — Beautiful rclone backup panel
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-00E5CC?style=for-the-badge&logo=github" />
+  <img src="https://img.shields.io/badge/version-1.0.2-00E5CC?style=for-the-badge&logo=github" />
   <img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=for-the-badge&logo=php&logoColor=white" />
   <img src="https://img.shields.io/badge/rclone-v1.75-3A9BDC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Nginx-Apache-269539?style=for-the-badge&logo=nginx" />
@@ -66,11 +66,13 @@ php -S 1.0.1.0:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php &
 # --transfers 16 --checkers 32 --fast-list --stats-one-line --stats 2s --log-level INFO --retries 5 --low-level-retries 10
 ```
 
-> **Live log is compact** (speed / transferred / current file on one updating line) — **full log stays full** for `View`/`Download`. If a run looks hanged (no output 90s) you get a toast and can `Stop`.
+> **Live log is compact** (speed / transferred / ETA on a single updating line) — **full log stays full** for `View`/`Download`. If a run looks hanged (no output 90s) you get a toast and can `Stop`. `--progress` in "Extra flags" is auto-normalized to periodic `--stats 5s --stats-one-line` when a script is generated, so the panel streams live speed/ETA over SSH/pipes (a TTY progress bar can't update when piped).
 
 ---
 
 ### 🌐 Nginx Guide (deploy at `/`)
+
+**Option A — php-fpm direct (recommended for production)**
 
 ```nginx
 # /etc/nginx/sites-available/rcloneweb
@@ -80,30 +82,36 @@ server {
     root /var/www/rcloneweb;
     index index.php;
 
-    # Protect data
-    location ~ ^/(data|\.git)/ { deny all; return 404; }
+    # Security: block sensitive paths
+    location ~ ^/(data|\.git|\.env) { deny all; return 404; }
+    location ~ /\. { deny all; access_log off; log_not_found off; }
 
-    # Public assets
-    location ~* \.(css|js|png|jpg|svg|woff2)$ {
-        try_files $uri $uri/ @fallback;
-        expires 7d;
-    }
-    location ~ ^/(css|js)/ { alias /var/www/rcloneweb/public/$1/; }
+    # Static assets: /css/* -> public/css/*, /js/* -> public/js/*
+    # Use ^~ so these prefix locations take precedence over regex
+    location ^~ /css/ { alias /var/www/rcloneweb/public/css/; expires 7d; access_log off; add_header Cache-Control "public"; }
+    location ^~ /js/  { alias /var/www/rcloneweb/public/js/;  expires 7d; access_log off; add_header Cache-Control "public"; }
 
-    # PHP
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php/php8.5-fpm.sock;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    }
-
-    # Front controller + API/raw
+    # Front-controller for SPA + API/raw
     location / {
         try_files $uri $uri/ /index.php?$args;
     }
-    location ~ ^/(api|raw|i)/ {
+
+    location ~ ^/(api|raw|i)(/|$) {
         try_files $uri /api/index.php?$args;
     }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.5-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_NAME $fastcgi_script_name;
+        fastcgi_read_timeout 600;
+        fastcgi_buffers 8 16k;
+        fastcgi_buffer_size 32k;
+        client_max_body_size 10M;
+    }
+
+    location ~ ^/data/.*\.php$ { deny all; return 404; }
 }
 ```
 ```bash
@@ -111,6 +119,38 @@ sudo nginx -t && sudo systemctl reload nginx
 # optional TLS
 sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d panel.example.com
 ```
+
+**Why CSS was 404 before:** the old guide had `location ~* \.(css|js)$ { try_files $uri @fallback; }` — that block matched `/css/style.css` first (regex order) and tried `$uri` at `/var/www/rcloneweb/css/style.css` which doesn't exist (real file is in `public/css/`), then fell to undefined `@fallback`. It also conflicted with the separate `alias` location. The `^~ /css/` + `^~ /js/` fix above makes Nginx map directly to `public/`.
+
+**Option B — Nginx reverse proxy to `php -S` (simple, no php-fpm needed)**
+
+If you run `php -S 0.0.0.0:8765 -t /var/www/rcloneweb /var/www/rcloneweb/router.php`:
+
+```nginx
+server {
+    listen 80;
+    server_name panel.example.com;
+
+    # still block direct access to sensitive paths
+    location ~ ^/(data|\.git|\.env) { deny all; return 404; }
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        client_max_body_size 10M;
+    }
+}
+```
+
+> **Do not mix** `root` + `try_files` with `proxy_pass` in the same `location /`. Pick **one** of the two options. If `css/style.css` still 404 behind a proxy, check `nginx -T` that you don't have both.
 
 **`.htaccess` is already included** for Apache — just set `DocumentRoot /var/www/rcloneweb` and `AllowOverride All`.
 
@@ -168,7 +208,8 @@ Create / edit in **⏰ Schedule** tab: pick **VPS + cron preset → + Add Schedu
 ### 📂 Browse & Create
 
 - **VPS file browser:** `📂` on any source row → lists via `ssh ls -1 -p` (supports `sshpass` or key), `Go` / `⬆ Up` / `📁 New Folder` (calls `POST /api/fleet/:id/mkdir`).
-- **Remote browser:** `☁️` on destination → ephemeral `rclone lsjson remote:path` (or fleet's stored creds via `POST /api/destinations/:id/browse`), same `New Folder` via `rclone mkdir`.
+- **Remote browser:** `☁️` on destination → ephemeral `rclone lsjson remote:path` (or fleet's stored creds via `POST /api/destinations/:id/browse`), same `New Folder` for sftp/ftp via `rclone mkdir`. On **S3**, folders are virtual, so `New Folder` uploads a zero-byte `.keep` marker object to make the prefix visible.
+- **Multi-select include/exclude:** `📂` on an include/exclude field opens a folder picker where you can click several files/folders to toggle selection (chips appear below), then `Add selected (+N)` appends them as comma-separated patterns. Double-click a folder (or `⬆ Up`) to navigate.
 
 If `rclone` is missing on a source VPS, the **Test** button will warn: `SSH OK, but rclone not found — install on source`.
 
@@ -191,6 +232,9 @@ If `rclone` is missing on a source VPS, the **Test** button will warn: `SSH OK, 
 | `/: Is a directory` in logs | Was unescaped Markdown backticks — fixed in current `generator.js` (now `\`$sync_path\``). Click **↻ Regenerate** on old scripts and Save. |
 | `530 Login incorrect` (FTP) | Re-test destination with `🔍 Test`, ensure `FTP_PASS` or embedded password matches `rclone@storage...` |
 | Duplicate runs | Panel now blocks concurrent `POST /api/scripts/:id/run` with `409` and disables **▶ Run** while `running` |
+| `css/style.css` 404 / no styles behind Nginx | Old guide used `try_files $uri @fallback` with undefined fallback and `location ~* \.(css\|js)$` that shadowed the `alias`. Use the fixed `^~ /css/` + `^~ /js/` alias in **Option A**, or if you proxy (`proxy_pass http://127.0.0.1:8765`) do **not** also set `root` + `try_files` in the same `location /` — pick one option. Check `nginx -T` for duplicate `location /`. |
+| Can't log in / first-run account not created | On first run `data/auth.json` doesn't exist → `GET /api/auth/status` returns `setupNeeded:true`. The panel shows **Create the first admin account**. If you see the login form but setup fails with `409 Setup already completed`, someone already created it — delete `data/auth.json` + `data/.secret` on the server and refresh ( `rm data/auth.json data/.secret` ). Ensure `data/` is writable by php-fpm/www-data (`chown www-data:www-data data && chmod 750 data`). |
+| `Setup already completed` but forgot password | `rm data/auth.json data/.secret` then refresh to re-create admin (fleet secrets will be re-encrypted with new key — re-save fleet entries). |
 
 ---
 

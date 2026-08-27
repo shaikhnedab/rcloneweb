@@ -1,6 +1,7 @@
 <?php
 // Root front-controller: serve SPA shell for all non-file, non-api, non-raw requests
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if (preg_match('#^/(data|\.git|\.env)(\/|$)#', $uri)) { http_response_code(404); exit; }
 $ext = pathinfo($uri, PATHINFO_EXTENSION);
 
 // let real files through (public/*, api/* handled by api/index.php via rewrite)

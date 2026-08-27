@@ -2,6 +2,20 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-08-27
+
+### Fixed
+- **Live speed / ETA freeze** — scripts using `--progress` never streamed updates over SSH/pipes (TTY-only). `--progress` is now auto-normalized to periodic `--stats 5s --stats-one-line` at generation time, and the live parser takes the latest stats line (both `Transferred:` and `INFO :` formats), so speed/ETA/percent update continuously.
+- **Live log not auto-switching** — when a run was in progress but the user had previously selected an old finished run, the terminal kept showing the old log. The running run now auto-switches into view.
+- **Include/exclude browse error** — the include/exclude folder picker derived its start folder by splitting the whole comma-separated value, producing a broken path. It now always opens at the source VPS root `/`.
+- **S3 "New Folder" did nothing** — `rclone mkdir` creates no empty dir on S3/MinIO. `New Folder` on an S3 destination now uploads a zero-byte `.keep` marker object so the folder actually appears in the browser.
+- **Nginx CSS 404 behind reverse proxy / php-fpm** — the old guide's `try_files $uri @fallback` and overlapping `~* \.(css|js)$` regex caused `/css/style.css` to 404 (file lives in `public/css/`). Replaced with `^~ /css/` + `^~ /js/` alias and added a dedicated reverse-proxy example (`proxy_pass http://127.0.0.1:8765`).
+
+### Changed
+- **Include/exclude dialog UX** — click toggles selection (no accidental folder navigation), a chips bar lists all selected paths with per-chip remove, and existing values are pre-seeded as chips.
+- **README — Nginx** — split into **Option A (php-fpm direct)** and **Option B (reverse proxy to `php -S`)** with correct `alias`, `try_files`, and `proxy_set_header` blocks; added `client_max_body_size` and `fastcgi_read_timeout`.
+- **First-run auth verified** — re-tested `POST /api/auth/status` → `setupNeeded:true`, `POST /api/auth/setup` → 200, duplicate setup → 409, and `Auth::secret()` now ensures `data/` exists before writing `.secret` so a fresh `git clone` without `data/` doesn't break.
+
 ## [1.0.1] - 2026-08-27
 
 ### Added
@@ -40,6 +54,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
 

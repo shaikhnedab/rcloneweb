@@ -473,14 +473,10 @@
       if (!vpsId) return toast('Select a Source VPS first (add one in Fleet)', true);
       browseState.vpsId = vpsId;
       const curVal = input.value.trim();
-      // include/exclude may be pattern like *.jpg or path - try to extract directory part
-      let initial = '/';
-      if (curVal) {
-        // if pattern contains /, take dir part
-        const slashIdx = curVal.lastIndexOf('/');
-        if (slashIdx > 0) initial = curVal.slice(0, slashIdx) || '/';
-        else if (curVal.startsWith('/')) initial = curVal;
-      }
+      // For include/exclude, entries may be comma/space-separated or globs, so we
+      // can't reliably derive a single start folder. Start at the source VPS root
+      // '/' — the dialog already pre-seeds the existing selections as chips.
+      const initial = '/';
       openBrowseDialog({ title: `Browse for ${kind} — ${fleetState.list.find(v=>v.id===vpsId)?.name || vpsId}`, initialPath: initial, mode:'vps' });
       // override browse select to insert pattern
       browseState.isIncludeExclude = true;
@@ -538,10 +534,15 @@
     $('#browse-path').value = browseCurrentPath;
     // multiselect only for include/exclude
     const multi = browseState.kind==='include' || browseState.kind==='exclude';
-    browseState.multiselect = [];
+    // Seed with any existing include/exclude entries so the user sees current state
+    browseState.multiselect = multi
+      ? ((browseState.inputEl && browseState.inputEl.value) || '').split(/[,\s]+/).filter(Boolean)
+      : [];
     const multiBtn=$('#btn-browse-multi'), cntEl=$('#browse-select-count');
     if(multiBtn) multiBtn.classList.toggle('hidden', !multi);
     if(cntEl) cntEl.hidden = !multi;
+    const selBar=$('#browse-selected');
+    if(selBar) selBar.hidden = !multi;
     updateBrowseMultiBadge();
     $('#browse-dialog').classList.add('open');
     loadBrowsePath(browseCurrentPath);
@@ -550,11 +551,41 @@
     const n = browseState.multiselect.length;
     const cntEl=$('#browse-select-count'); if(cntEl) { cntEl.textContent=`${n} selected`; cntEl.hidden = !(n); }
     const multiBtn=$('#btn-browse-multi'); if(multiBtn) multiBtn.textContent=`Add selected (+${n})`;
+    // render selected chips bar with remove buttons
+    const selBar=$('#browse-selected');
+    if(selBar){
+      if(n){
+        selBar.hidden=false;
+        selBar.innerHTML = '<span class="hint" style="display:block;margin-bottom:4px">Selected — click a chip to remove:</span>';
+        browseState.multiselect.forEach((p)=>{
+          const chip=document.createElement('span');
+          chip.className='browse-chip';
+          chip.dataset.path=p;
+          chip.textContent = (p.startsWith('/')?'':'/')+p;
+          chip.setAttribute('title', 'Click to remove '+p);
+          chip.setAttribute('role','button');
+          chip.setAttribute('tabindex','0');
+          chip.addEventListener('click',()=>{ removeFromMultiselect(p); });
+          chip.addEventListener('keydown',(ev)=>{
+            if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); removeFromMultiselect(p); }
+          });
+          selBar.appendChild(chip);
+        });
+      } else {
+        selBar.hidden=true;
+        selBar.innerHTML='';
+      }
+    }
     // highlight selected rows in current list
     $$('#browse-list .browse-item').forEach((el)=>{
       const p = el.dataset.path;
       el.classList.toggle('selected', !!p && browseState.multiselect.includes(p));
     });
+  }
+  function removeFromMultiselect(p){
+    const i=browseState.multiselect.indexOf(p);
+    if(i>=0) browseState.multiselect.splice(i,1);
+    updateBrowseMultiBadge();
   }
   function closeBrowseDialog(){ $('#browse-dialog').classList.remove('open'); }
   async function loadBrowsePath(path){
@@ -593,7 +624,7 @@
         div.setAttribute('tabindex', '0');
         const multi = browseState.kind==='include' || browseState.kind==='exclude';
         div.classList.toggle('multi', multi);
-        div.innerHTML = `<span>${e.isDir ? '📁' : '📄'}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span><span class="browse-check" aria-hidden="true">✓</span>${e.isDir ? '<span class="hint">dir</span>' : ''}`;
+        div.innerHTML = `<span>${e.isDir ? '📁' : '📄'}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span><span class="browse-check" aria-hidden="true">✓</span>${e.isDir ? '<span class="hint">dir · dbl-click to open</span>' : '<span class="hint">file</span>'}`;
         const selectItem = () => {
           const multi = browseState.kind==='include' || browseState.kind==='exclude';
           if (multi) {
@@ -616,12 +647,18 @@
           }
         };
         div.addEventListener('click', selectItem);
-        div.addEventListener('keydown', (ev)=>{
-          if (ev.key==='Enter' || ev.key===' ') { ev.preventDefault(); selectItem(); }
-        });
-        div.addEventListener('dblclick', ()=>{
+        div.addEventListener('dblclick', (ev)=>{
+          ev.stopPropagation();
           if (e.isDir) loadBrowsePath(e.path);
           else { browseState.selectedPath = e.path; confirmBrowseSelect(); }
+        });
+        div.addEventListener('keydown', (ev)=>{
+          if (ev.key==='Enter' || ev.key===' ') {
+            ev.preventDefault();
+            // In multi mode Space/Enter toggles selection; Enter on a dir opens it.
+            if (e.isDir && ev.key==='Enter') loadBrowsePath(e.path);
+            else selectItem();
+          }
         });
         listEl.appendChild(div);
       }
@@ -940,6 +977,9 @@
       updateBeautifulRun(activeOrLatest);
       // also update live stats in text UI
       updateLiveStats(activeOrLatest);
+      // When a run is live, always auto-show its log in the terminal so the
+      // user sees streaming output even if they previously selected an old run.
+      let liveShown = false;
       for (const r of runs) {
         const div = document.createElement('div');
         div.className = 'run-item' + (r.id === (selectId || run.activeId) ? ' active' : '');
@@ -955,7 +995,12 @@
         div.querySelector('.dl-btn').addEventListener('click', (e)=>{ e.stopPropagation(); downloadText(`run-${r.id}.log`, r.output||''); });
         div.addEventListener('click', () => showRun(r));
         hist.appendChild(div);
-        if (!selectId && r.id === (run.activeId || runs[0]?.id)) showRun(r);
+        if (!selectId && !liveShown && r.id === (run.activeId || runs[0]?.id)) { showRun(r); liveShown = true; }
+      }
+      // If a run is currently in progress but the loop didn't show it (e.g. user
+      // had selected an old finished run), force-switch the terminal to the live run.
+      if (!selectId && run.running && activeOrLatest && !activeOrLatest.finishedAt && !liveShown) {
+        showRun(activeOrLatest);
       }
       if (!runs.length && !selectId) {
         $('#run-terminal').textContent = '// no runs yet — hit "Run now" or "Dry run"';
@@ -978,24 +1023,29 @@
   let lastOutputTime = Date.now();
   function getCompactLiveOutput(fullOutput) {
     if (!fullOutput) return '(no output)';
-    // Extract last stats block for compact live view - keep only last 8 lines that matter
     const lines = fullOutput.split('\n');
-    // Find last "Transferred:" and "Transferring:" sections
-    let lastStatsIdx = -1, lastTransferIdx = -1;
+    // Find the last stats-bearing line. rclone emits both forms:
+    //   "Transferred:   X / Y, N%, S/s, ETA zs"   (--stats-one-line TTY)
+    //   "2026.. INFO :  X / Y, N%, S/s, ETA zs"    (--stats via log, non-tty)
+    const isStats = (l) => /(Transferred:|INFO\s*:\s*).*[KMGT]?i?B\s*\/\s*[0-9.]+\s*[KMGT]?i?B.*(ETA|\/s)/i.test(l);
+    let lastStatsIdx = -1;
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (lastStatsIdx === -1 && lines[i].includes('Transferred:')) lastStatsIdx = i;
-      if (lastTransferIdx === -1 && lines[i].includes('Transferring:')) lastTransferIdx = i;
-      if (lastStatsIdx !== -1 && lastTransferIdx !== -1) break;
+      if (isStats(lines[i])) { lastStatsIdx = i; break; }
     }
     if (lastStatsIdx !== -1) {
-      // Take last stats block: from last Transferring: or last Transferred: to end, but limit to 12 lines
-      const start = lastTransferIdx !== -1 ? Math.max(0, lastTransferIdx) : Math.max(0, lastStatsIdx - 2);
-      const compact = lines.slice(start).slice(-12).join('\n');
-      // Add header
+      // show from last Transferring block (or a couple before the last stats line)
+      let start = lastStatsIdx;
+      for (let i = lastStatsIdx; i >= 0; i--) {
+        if (lines[i].includes('Transferring:')) { start = i; break; }
+      }
+      if (start === lastStatsIdx) start = Math.max(0, lastStatsIdx - 5);
+      const compact = lines.slice(start).slice(-16).join('\n');
       return `— Live (compact, full log saved for download) —\n${compact}`;
     }
-    // Fallback: last 12 lines
-    return lines.slice(-12).join('\n');
+    // Fallback: show the last non-empty 16 lines so progress is visible even
+    // before any stats line (early "Elapsed time:" / file lines)
+    const nonEmpty = lines.map(l=>l.trim()).filter(Boolean);
+    return nonEmpty.slice(-16).join('\n') || '(no output)';
   }
   function showRun(r) {
     const isNewSelection = run.activeId !== r.id;
@@ -1041,7 +1091,7 @@
       if (termEl) delete termEl.dataset.hangWarned;
     }
   }
-  function updateLiveStats(r){
+function updateLiveStats(r){
     const bar=$('#run-live-stats');
     if(!bar) return;
     if(!r){ bar.classList.add('hidden'); return; }
@@ -1052,21 +1102,35 @@
     const endMs=r.finishedAt ? new Date(r.finishedAt).getTime() : Date.now();
     const elapsedSec=Math.max(0, Math.floor((endMs - startMs)/1000));
     const elapsedStr = `${Math.floor(elapsedSec/60)}m ${elapsedSec%60}s`;
-    // parse rclone progress: "Transferred: 10 MiB / 100 MiB, 10%, 5 MiB/s, ETA 18s"
+    // Scan for the LAST rclone stats line so live updates track the latest
+    // snapshot. rclone emits periodic lines like:
+    //   "Transferred:   5 MiB / 10 MiB, 50%, 5 MiB/s, ETA 5s"
+    // or the --stats-one-line INFO form:
+    //   "2026/.. INFO :  5 MiB / 10 MiB, 50%, 5 MiB/s, ETA 5s"
     let transferred='—', speed='—', eta='—', checks='';
-    const mTrans = out.match(/Transferred:\s*([^\n,]+)/i);
-    if(mTrans) transferred=mTrans[1].trim();
-    const mSpeed = out.match(/(\d+(?:\.\d+)?\s*[KMGT]?i?B\/s)/i);
-    if(mSpeed) speed=mSpeed[0];
-    const mEta = out.match(/ETA\s+([^\n,]+)/i);
-    if(mEta) eta=mEta[1].trim();
+    const lines=out.split(/\r?\n/);
+    for(const line of lines){
+      const hasTrans = /\bTransferred\s*:/i.test(line) || /\b\d+(?:\.\d+)?\s*[KMGT]?i?B\s*\/\s*\d/.test(line);
+      if(!hasTrans) continue;
+      const mTrans=line.match(/([0-9.]+\s*[KMGT]?i?B\s*\/\s*[0-9.]+\s*[KMGT]?i?B)/i);
+      if(mTrans) transferred=mTrans[1].trim();
+      const mSpeed=line.match(/(\d+(?:\.\d+)?\s*[KMGT]?i?B\/s)/i);
+      if(mSpeed) speed=mSpeed[0];
+      const mEta=line.match(/ETA\s+([^\n,)]+)/i);
+      if(mEta) eta=mEta[1].trim();
+    }
     const mChecks = out.match(/Checks:\s*([^\n]+)/i);
     if(mChecks) checks=mChecks[1].trim();
+    // fall back to any ETA/speed if no structured stats line found
+    if(transferred==='—'){
+      const mSpeed=out.match(/(\d+(?:\.\d+)?\s*[KMGT]?i?B\/s)/i); if(mSpeed) speed=mSpeed[0];
+      const mEta=out.match(/ETA\s+([^\n,)]+)/i); if(mEta) eta=mEta[1].trim();
+    }
     bar.innerHTML = `
       <span><b>⏱ Elapsed:</b> ${elapsedStr}</span>
       <span><b>📦 Transferred:</b> ${transferred}</span>
       ${speed!=='—' ? `<span><b>⚡ Speed:</b> ${speed}</span>` : ''}
-      ${eta!=='—' ? `<span><b>⏳ ETA:</b> ${eta}</span>` : ''}
+      ${eta!=='—' && eta!=='-' ? `<span><b>⏳ ETA:</b> ${eta}</span>` : ''}
       ${checks ? `<span><b>✔ Checks:</b> ${checks}</span>` : ''}
       <span style="margin-left:auto"><b>Status:</b> ${r.finishedAt ? (r.exitCode===0?'✅ OK':'❌ Failed') : '⏳ Running'}</span>
     `;

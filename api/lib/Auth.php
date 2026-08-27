@@ -6,6 +6,7 @@ class Auth {
 
     static function secret(): string {
         if (!file_exists(self::SECRET_FILE)) {
+            @mkdir(dirname(self::SECRET_FILE), 0750, true);
             file_put_contents(self::SECRET_FILE, bin2hex(random_bytes(32)));
             @chmod(self::SECRET_FILE, 0600);
         }

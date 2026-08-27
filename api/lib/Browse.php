@@ -217,20 +217,20 @@ class Browse {
             $createCmd=sprintf('rclone config create %s ftp host %s user %s port %s pass %s --non-interactive 2>&1', escapeshellarg($remote),escapeshellarg($host),escapeshellarg($user),escapeshellarg($port?:'21'),escapeshellarg($obscured));
         } elseif ($type==='s3') {
             if ($accessKey===''||$secretKey===null||$secretKey==='') return ['ok'=>false,'msg'=>'Access key/secret required'];
-            // S3 directories are virtual — just verify bucket access, no mkdir needed
             $createCmd=sprintf('rclone config create %s s3 provider %s region %s access_key_id %s secret_access_key %s --non-interactive', escapeshellarg($remote),escapeshellarg($provider),escapeshellarg($region),escapeshellarg($accessKey),escapeshellarg($secretKey));
             if ($endpoint) $createCmd.=' endpoint '.escapeshellarg($endpoint);
             $createCmd.=' no_check_bucket true 2>&1';
             @shell_exec($createCmd);
-            // Verify we can list the bucket (proves creds work), then treat mkdir as success
-            $checkPath = $bucket ? $remote.':'.$bucket : $remote.':';
-            $checkCmd='timeout 10 rclone lsd '.escapeshellarg($checkPath).' --max-depth 1 2>&1; echo __EXIT:$?';
-            $checkOut=trim((string)shell_exec($checkCmd));
+            // S3 folders are virtual — `rclone mkdir` does nothing on providers that
+            // can't hold empty dirs. Upload a zero-byte marker object at the target
+            // path so the prefix is visible when browsing.
+            $remotePath=$remote.':'.($bucket?rtrim($bucket,'/').'/' : '').ltrim($path,'/');
+            $mkCmd='echo -n "" | timeout 15 rclone rcat '.escapeshellarg($remotePath.'/.keep').' 2>&1; echo __EXIT:$?';
+            $mkOut=trim((string)shell_exec($mkCmd));
             @shell_exec('rclone config delete '.escapeshellarg($remote).' 2>&1');
-            $code=0; if (preg_match('/__EXIT:(\d+)/',$checkOut,$m)) $code=(int)$m[1];
-            if ($code===0) return ['ok'=>true,'msg'=>'S3 folder ready — will be created on first upload'];
-            // If bucket check fails, still allow mkdir as success — S3 will create prefix on upload
-            return ['ok'=>true,'msg'=>'S3 folder ready'];
+            $code=0; if (preg_match('/__EXIT:(\d+)/',$mkOut,$m)) $code=(int)$m[1];
+            if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];
+            return ['ok'=>false,'msg'=>substr($mkOut,0,400)?:'S3 mkdir failed'];
         } else return ['ok'=>false,'msg'=>'Unknown type'];
         @shell_exec($createCmd);
         $remotePath=$remote.':'.ltrim($path,'/');

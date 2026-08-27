@@ -287,7 +287,14 @@ const Generator = (() => {
       L.push('LOGFILE="$LOG_FILE"');
     }
     L.push('# ---------- rclone defaults ----------');
-    L.push(`RCLONE_OPTS=${shq(o.extraFlags || '--transfers 16 --checkers 32 --fast-list --stats-one-line --stats 2s --log-level INFO --retries 5 --low-level-retries 10')}`);
+    // `--progress` draws a TTY progress bar that never updates when piped (panel
+    // runs scripts via ssh/pipes). Normalise it to periodic `--stats` log lines
+    // so the live panel keeps streaming speed/ETA.
+    const normalizedFlags = String(o.extraFlags || '')
+      .split(/\s+/)
+      .map(t => t === '--progress' ? '--stats 5s --stats-one-line' : t)
+      .join(' ');
+    L.push(`RCLONE_OPTS=${shq(normalizedFlags || '--transfers 16 --checkers 32 --fast-list --stats-one-line --stats 2s --log-level INFO --retries 5 --low-level-retries 10')}`);
     L.push('');
 
     L.push('# ---------- discord helpers ----------');
