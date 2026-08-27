@@ -2,6 +2,14 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.5] - 2026-08-27
+
+### Fixed
+- **Critical auth bypass in SPA boot (fail-open)** — `boot()` in `public/js/app.js` caught *any* error from `GET /api/auth/status` with an empty `catch {}` and then unconditionally called `showApp()`, revealing the full app (with the static `admin` label) without a valid session. When `/api/*` was misrouted by Nginx (e.g. served as the SPA HTML shell instead of JSON, or a network/JSON error), `r.json()` threw and the app appeared "logged in as admin", and logout + refresh kept re-showing the app. `boot()` now **fails closed**: on any non-OK response or parse error it shows the login view and surfaces an actionable message (`Check server logs / nginx routing for /api/`), never the app.
+
+### Security
+- Authentication state can no longer be bypassed by an unreachable or misconfigured API. Access is granted only when `/api/auth/status` returns `authenticated:true`.
+
 ## [1.0.4] - 2026-08-27
 
 ### Fixed
@@ -70,6 +78,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.5]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.5
 [1.0.4]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.4
 [1.0.3]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.3
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2

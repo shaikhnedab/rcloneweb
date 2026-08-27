@@ -1517,13 +1517,22 @@ function updateLiveStats(r){
     $('#btn-theme').addEventListener('click', () => {
       applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
-    // auth check
+    // auth check — FAIL CLOSED: any error must never reveal the app.
     try {
-      const st = await fetch('/api/auth/status').then((r) => r.json());
+      const res = await fetch('/api/auth/status');
+      if (!res.ok) throw new Error('auth/status HTTP ' + res.status);
+      const st = await res.json();
       if (st.setupNeeded) { showAuth(true); return; }
       if (!st.authenticated) { showAuth(false); return; }
-    } catch {}
-    showApp();
+      showApp();
+    } catch (e) {
+      console.error('[rcloneweb] auth check failed, showing login (fail-closed):', e);
+      // If the API is unreachable/misrouted (e.g. nginx not sending /api/* to
+      // api/index.php) we must NOT show the app. Show login and surface the error.
+      $('#auth-error').textContent = 'Could not reach the API. Check server logs / nginx routing for /api/.';
+      $('#auth-error').classList.remove('hidden');
+      showAuth(false);
+    }
   }
 
   // ---------- init (post-auth) ----------
