@@ -38,7 +38,10 @@ class Browse {
         $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
-        $sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
+        // UserKnownHostsFile=/dev/null avoids www-data trying to write /var/www/.ssh/known_hosts
+        // (which fails with "Could not create directory '/var/www/.ssh' (Permission denied)" and
+        // would otherwise be mis-classified as an auth failure). LogLevel=ERROR silences it.
+        $sshOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $sshOpts .= ' -i '.escapeshellarg($vps['keyPath']);
         // Use ls -1 -p to mark dirs with /, and handle spaces. Build the remote
         // command with proper escaping: inner path is escaped, then the whole
@@ -52,7 +55,12 @@ class Browse {
         // Extract exit codes
         $exit = 0;
         if (preg_match('/__EXIT:(\d+)\s*$/', $out, $m)) { /* use last? */ }
-        if (str_contains($out, 'Permission denied')) {
+        // Only treat Permission denied as auth failure when it looks like
+        // "Permission denied (publickey,password)" — the previous check also
+        // matched the harmless "Could not create directory '/var/www/.ssh'
+        // (Permission denied)" warning from known_hosts, which is now suppressed
+        // via UserKnownHostsFile=/dev/null but we keep the check precise.
+        if (preg_match('/Permission denied\s*\(publickey|Permission denied, please try again/i', $out)) {
             $raw = trim(preg_replace('/__EXIT:\d+/', '', $out));
             $hint = substr($raw, 0, 300);
             return ['ok'=>false,'msg'=>'SSH Permission denied — verify password, PasswordAuthentication & PermitRootLogin on '.$host.($hint ? " Raw: $hint" : ''),'path'=>$path,'entries'=>[]];
@@ -188,7 +196,7 @@ class Browse {
         $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
-        $sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
+        $sshOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $sshOpts .= ' -i '.escapeshellarg($vps['keyPath']);
         $safe = str_replace("'", "'\\''", $path);
         $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host.' '.escapeshellarg("mkdir -p '$safe' 2>&1; echo __EXIT:\$?");

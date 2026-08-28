@@ -101,10 +101,10 @@ class Runs {
         $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
         // For password auth via sshpass, BatchMode must be OFF; for key auth, keep it ON
         $batchMode = $usePass ? 'no' : 'yes';
-        $sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.($usePass ? 'password,keyboard-interactive' : 'publickey').' -p '.(int)$port;
+        $sshOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.($usePass ? 'password,keyboard-interactive' : 'publickey').' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $sshOpts .= ' -i '.escapeshellarg($vps['keyPath']);
         $sshCmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host;
-        $scpOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -P '.(int)$port;
+        $scpOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -P '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $scpOpts .= ' -i '.escapeshellarg($vps['keyPath']);
         $scpCmd = $sshPassPrefix.'scp '.$scpOpts.' '.escapeshellarg($tmpLocal).' '.escapeshellarg($user.'@'.$host.':'.$remoteTmp);
         $scpOk = self::execTimeout($scpCmd, 15);
@@ -144,7 +144,7 @@ class Runs {
         $usePass = $hasSshpass && ($vps['auth']??'password')==='password';
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
-        $opts = '-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
+        $opts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) {
             $opts .= ' -i '.escapeshellarg($vps['keyPath']);
         }
@@ -227,7 +227,7 @@ class Runs {
                 $batchMode = $usePass ? 'no' : 'yes';
                 $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
                 $keyOpt = ($vps['auth']??'password')==='key' && !empty($vps['keyPath']) ? ' -i '.escapeshellarg($vps['keyPath']) : '';
-                $opts='-o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.$port.$keyOpt;
+                $opts='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.$port.$keyOpt;
                 $ssh="ssh $opts $user@$host";
                 if ($usePass) {
                     $ssh='sshpass -p '.escapeshellarg($vps['password']).' '.$ssh;

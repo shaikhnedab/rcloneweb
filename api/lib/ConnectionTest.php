@@ -75,7 +75,16 @@ class ConnectionTest {
         $code = 0;
         if (preg_match('/__EXIT:(\d+)/',$out,$m)) { $code=(int)$m[1]; $out=str_replace($m[0],'',$out); }
         $out=trim($out);
-        if ($code===0) return ['ok'=>true,'msg'=>'Connection OK'.($out ? " — ".substr($out,0,200) : '')];
+        // Strip any remaining NOTICE lines that slipped past --log-level ERROR
+        $out = trim(implode("\n", array_filter(explode("\n", $out), fn($l) => !str_contains($l, 'NOTICE:') && trim($l) !== '')));
+        if ($code===0) {
+            if ($out !== '') {
+                $lines = array_values(array_filter(explode("\n", $out), fn($l) => trim($l) !== ''));
+                $cnt = count($lines);
+                return ['ok'=>true,'msg'=>'Connection OK — found '.$cnt.' items'.($cnt ? ' — '.substr(implode(', ', array_slice($lines,0,3)),0,120) : '')];
+            }
+            return ['ok'=>true,'msg'=>'Connection OK — found 0 items'];
+        }
         // humanize common errors
         $lower=strtolower($out);
         if (str_contains($lower,'signaturedoesnotmatch')) $out='S3 signature mismatch — check: 1) Region matches endpoint (e.g. us-east-1 for AWS, correct for Wasabi/Minio), 2) Endpoint URL is exact (https://... with no trailing slash), 3) System clock is correct (NTP), 4) Access/Secret key correct. Raw: '.substr($out,0,250);
@@ -97,7 +106,7 @@ class ConnectionTest {
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
         $keyOpt = ($vps['auth']??'password')==='key' && !empty($vps['keyPath']) ? ' -i '.escapeshellarg($vps['keyPath']) : '';
-        $cmd = "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode=$batchMode -o PreferredAuthentications=$pref -p $port$keyOpt $user@$host 'echo ok; which rclone; echo RCLONE:\$?; which curl; echo CURL:\$?; which bash; echo BASH:\$?; rclone version 2>&1 | head -1' 2>&1";
+        $cmd = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 -o BatchMode=$batchMode -o PreferredAuthentications=$pref -p $port$keyOpt $user@$host 'echo ok; which rclone; echo RCLONE:\$?; which curl; echo CURL:\$?; which bash; echo BASH:\$?; rclone version 2>&1 | head -1' 2>&1";
         if ($usePass) {
             $cmd = 'sshpass -p '.escapeshellarg($vps['password']).' '.$cmd;
         }
