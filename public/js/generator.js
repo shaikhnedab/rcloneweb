@@ -350,7 +350,7 @@ const Generator = (() => {
     if (cfg.sources.some(s=> s.include || s.exclude) || (o.bandwidth && o.bandwidth.toLowerCase() !== 'off')) {
       cfg.sources.forEach((s, i) => {
         const toks = filterExtraFor(s, o.bandwidth);
-        const inner = toks.length ? toks.join(' ') : '""';
+        const inner = toks.length ? toks.join(' ') : '';
         L.push(`sync_extra_${i}=(${inner})`);
       });
     }

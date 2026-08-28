@@ -2,6 +2,11 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.15] - 2026-08-28
+
+### Fixed
+- **FTP `rclone sync` failed with `needs 2 arguments maximum: you provided 3 … ["", ""]`** — when a script had mixed rows (some with `include`/`exclude`/`bandwidth` and some without), the empty `sync_extra_N=("")` array expanded to `""` via `"$@"`, passing an extra empty arg to `rclone sync`. Now empty rows emit `sync_extra_N=()` (true empty array) so `"$@"` expands to nothing. Affects `public/js/generator.js:353`.
+
 ## [1.0.14] - 2026-08-28
 
 ### Added
@@ -140,6 +145,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.15]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.15
 [1.0.14]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.14
 [1.0.13]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.13
 [1.0.12]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.12
