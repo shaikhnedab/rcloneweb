@@ -2,6 +2,11 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.9] - 2026-08-28
+
+### Fixed
+- **Destination/VPS test, Browse & Mkdir failed with "Config file /var/www/.rclone.conf not found" / "didn't find section in config file"** — these operations ran `rclone config create <remote>` then probed the named remote. When PHP runs as `www-data` with `HOME=/var/www` (the normal case behind nginx+php-fpm), rclone could not write `/var/www/.rclone.conf`, so the section was never persisted and the probe failed. Rewrote `ConnectionTest::testDestination`, `Browse::browseRemote` and `Browse::mkdirRemote` to use rclone's inline `:backend:` syntax with all credentials passed as `--flag` arguments — **nothing is written to any config file**, so it works even when `/var/www` is unwritable by the web server. (`rclone obscure` is still used for sftp/ftp passwords; S3 secret is passed raw, which also fixes a latent double-obscure that produced SignatureDoesNotMatch.)
+
 ## [1.0.8] - 2026-08-27
 
 ### Changed
@@ -73,11 +78,6 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - **Stale per-row destination** — switching the Destination fleet now clears per-row remote destinations so the generator re-derives them from the newly selected fleet (e.g. `Hostbrr:` → `s3nginx:`).
 - **Accessibility** — strong `:focus-visible` for inputs, keyboard access + `aria-label` on browser items/buttons, removed `transition: all`, `overscroll-behavior: contain` on dialogs, touch-friendly defaults.
 
-## [1.0.9] - 2026-08-27
-
-### Changed
-- Patch release via auto-release workflow.
-
 ## [1.0.0] - 2026-08-26
 
 ### Added
@@ -111,7 +111,6 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
-
 
 
 

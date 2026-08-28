@@ -24,47 +24,48 @@ class ConnectionTest {
         $rclone = trim((string)shell_exec('which rclone 2>/dev/null'));
         if (!$rclone) return ['ok'=>false,'msg'=>'rclone not found on panel server (install: curl https://rclone.org/install.sh | sudo bash)'];
 
-        $remote = '_test_'.bin2hex(random_bytes(4));
-        $cmd = '';
-        $tmpEnv = [];
-
+        // Build inline rclone backend params (no config file written — works even
+        // when /var/www is unwritable by www-data). Uses rclone's :backend: syntax.
+        $flags = [];
         if ($type === 'sftp') {
             if ($sftpAuth === 'key') {
                 if (!$keyPath) return ['ok'=>false,'msg'=>'SSH key path required'];
-                $cmd = sprintf('rclone config create %s sftp host %s user %s key_file %s --non-interactive 2>&1',
-                    escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($keyPath));
+                $flags[] = '--sftp-host='.escapeshellarg($host);
+                $flags[] = '--sftp-user='.escapeshellarg($user);
+                $flags[] = '--sftp-port='.escapeshellarg($port ?: '22');
+                $flags[] = '--sftp-key-file='.escapeshellarg($keyPath);
             } else {
                 if ($pass === null || $pass === '') return ['ok'=>false,'msg'=>'Password required'];
                 $obscured = trim((string)shell_exec('rclone obscure '.escapeshellarg($pass).' 2>/dev/null'));
-                $cmd = sprintf('rclone config create %s sftp host %s user %s port %s pass %s --non-interactive 2>&1',
-                    escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($port ?: '22'), escapeshellarg($obscured));
+                $flags[] = '--sftp-host='.escapeshellarg($host);
+                $flags[] = '--sftp-user='.escapeshellarg($user);
+                $flags[] = '--sftp-port='.escapeshellarg($port ?: '22');
+                $flags[] = '--sftp-pass='.escapeshellarg($obscured);
             }
         } elseif ($type === 'ftp') {
             if ($pass === null || $pass === '') return ['ok'=>false,'msg'=>'Password required'];
             $obscured = trim((string)shell_exec('rclone obscure '.escapeshellarg($pass).' 2>/dev/null'));
-            $cmd = sprintf('rclone config create %s ftp host %s user %s port %s pass %s --non-interactive 2>&1',
-                escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($port ?: '21'), escapeshellarg($obscured));
+            $flags[] = '--ftp-host='.escapeshellarg($host);
+            $flags[] = '--ftp-user='.escapeshellarg($user);
+            $flags[] = '--ftp-port='.escapeshellarg($port ?: '21');
+            $flags[] = '--ftp-pass='.escapeshellarg($obscured);
         } else { // s3
             if ($accessKey === '' || $secretKey === null || $secretKey === '') return ['ok'=>false,'msg'=>'Access key and secret required'];
-            // rclone config create expects raw secret (it obscures internally); passing already-obscured causes double-obscure and SignatureDoesNotMatch
-            $cmd = sprintf('rclone config create %s s3 provider %s region %s access_key_id %s secret_access_key %s --non-interactive',
-                escapeshellarg($remote), escapeshellarg($provider), escapeshellarg($region), escapeshellarg($accessKey), escapeshellarg($secretKey));
-            if ($endpoint) $cmd .= ' endpoint '.escapeshellarg($endpoint);
-            // Avoid 409 BucketAlreadyExists on existing buckets (Minio etc.)
-            $cmd .= ' no_check_bucket true';
-            $cmd .= ' 2>&1';
+            // Secret passed RAW — rclone handles it inline (avoids the old double-obscure issue)
+            $flags[] = '--s3-provider='.escapeshellarg($provider);
+            $flags[] = '--s3-region='.escapeshellarg($region);
+            $flags[] = '--s3-access-key-id='.escapeshellarg($accessKey);
+            $flags[] = '--s3-secret-access-key='.escapeshellarg($secretKey);
+            if ($endpoint) $flags[] = '--s3-endpoint='.escapeshellarg($endpoint);
         }
+        $flagStr = implode(' ', $flags);
 
-        @shell_exec($cmd);
-        // probe: for S3 with bucket, test the bucket directly to avoid ListBuckets permission issues and Signature region mismatches on account level
-        if ($type === 's3' && $bucket !== '') {
-            $probe = 'timeout 12 rclone lsd '.escapeshellarg($remote.':'.$bucket).' --max-depth 1 2>&1; echo __EXIT:$?';
-        } else {
-            $probe = 'timeout 12 rclone lsd '.escapeshellarg($remote.':').' --max-depth 1 2>&1; echo __EXIT:$?';
-        }
+        // probe: for S3 with bucket, test the bucket directly; else test root (:backend:)
+        $backend = ':'.$type.':';
+        $target = ($type === 's3' && $bucket !== '') ? $backend.$bucket : $backend;
+        $probe = 'timeout 12 rclone lsd '.escapeshellarg($target).' '.$flagStr.' --max-depth 1 2>&1; echo __EXIT:$?';
         $out = (string)shell_exec($probe);
-        // cleanup
-        @shell_exec('rclone config delete '.escapeshellarg($remote).' 2>&1');
+        // no cleanup needed — nothing was written to any config file
 
         $code = 0;
         if (preg_match('/__EXIT:(\d+)/',$out,$m)) { $code=(int)$m[1]; $out=str_replace($m[0],'',$out); }

@@ -84,8 +84,6 @@ class Browse {
         $rclone = trim((string)shell_exec('which rclone 2>/dev/null'));
         if (!$rclone) return ['ok'=>false,'msg'=>'rclone not found','path'=>$path,'entries'=>[]];
 
-        $remote = '_browse_'.bin2hex(random_bytes(4));
-        $createCmd = '';
         $host = trim($in['host'] ?? '');
         $port = trim((string)($in['port'] ?? ''));
         $user = trim($in['user'] ?? '');
@@ -99,43 +97,38 @@ class Browse {
         $accessKey = trim($in['accessKey'] ?? $in['s3AccessKey'] ?? '');
         $secretKey = $in['secretKey'] ?? $in['s3SecretKey'] ?? null;
 
+        // Inline rclone backend params (no config file written — works even when
+        // /var/www is unwritable by www-data). Uses rclone's :backend: syntax.
         if ($type === 'sftp') {
             if ($sftpAuth === 'key') {
-                $createCmd = sprintf('rclone config create %s sftp host %s user %s key_file %s --non-interactive',
-                    escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($keyPath));
+                if (!$keyPath) return ['ok'=>false,'msg'=>'SSH key path required','path'=>$path,'entries'=>[]];
+                $flags = ['--sftp-host='.escapeshellarg($host), '--sftp-user='.escapeshellarg($user), '--sftp-port='.escapeshellarg($port ?: '22'), '--sftp-key-file='.escapeshellarg($keyPath)];
             } else {
                 if ($pass === null || $pass === '') return ['ok'=>false,'msg'=>'Password required','path'=>$path,'entries'=>[]];
                 $obscured = trim((string)shell_exec('rclone obscure '.escapeshellarg($pass).' 2>/dev/null'));
-                $createCmd = sprintf('rclone config create %s sftp host %s user %s port %s pass %s --non-interactive',
-                    escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($port ?: '22'), escapeshellarg($obscured));
+                $flags = ['--sftp-host='.escapeshellarg($host), '--sftp-user='.escapeshellarg($user), '--sftp-port='.escapeshellarg($port ?: '22'), '--sftp-pass='.escapeshellarg($obscured)];
             }
         } elseif ($type === 'ftp') {
             if ($pass === null || $pass === '') return ['ok'=>false,'msg'=>'Password required','path'=>$path,'entries'=>[]];
             $obscured = trim((string)shell_exec('rclone obscure '.escapeshellarg($pass).' 2>/dev/null'));
-            $createCmd = sprintf('rclone config create %s ftp host %s user %s port %s pass %s --non-interactive',
-                escapeshellarg($remote), escapeshellarg($host), escapeshellarg($user), escapeshellarg($port ?: '21'), escapeshellarg($obscured));
+            $flags = ['--ftp-host='.escapeshellarg($host), '--ftp-user='.escapeshellarg($user), '--ftp-port='.escapeshellarg($port ?: '21'), '--ftp-pass='.escapeshellarg($obscured)];
         } elseif ($type === 's3') {
             if ($accessKey === '' || $secretKey === null || $secretKey === '') return ['ok'=>false,'msg'=>'Access key/secret required','path'=>$path,'entries'=>[]];
-            $createCmd = sprintf('rclone config create %s s3 provider %s region %s access_key_id %s secret_access_key %s --non-interactive',
-                escapeshellarg($remote), escapeshellarg($provider), escapeshellarg($region), escapeshellarg($accessKey), escapeshellarg($secretKey));
-            if ($endpoint) $createCmd .= ' endpoint '.escapeshellarg($endpoint);
-            $createCmd .= ' no_check_bucket true';
+            $flags = ['--s3-provider='.escapeshellarg($provider), '--s3-region='.escapeshellarg($region), '--s3-access-key-id='.escapeshellarg($accessKey), '--s3-secret-access-key='.escapeshellarg($secretKey)];
+            if ($endpoint) $flags[] = '--s3-endpoint='.escapeshellarg($endpoint);
         } else {
             return ['ok'=>false,'msg'=>'Unknown remote type','path'=>$path,'entries'=>[]];
         }
-        $createCmd .= ' 2>&1';
-
-        @shell_exec($createCmd);
+        $flagStr = implode(' ', $flags);
+        $backend = ':'.$type.':';
         // normalize path: for s3, path is bucket/path or just path
-        $remotePath = $remote . ':' . ltrim($path, '/');
-        // For s3, if path empty, use bucket
-        if ($type === 's3' && $path === '' && $bucket) $remotePath = $remote . ':' . $bucket;
-        elseif ($type === 's3' && $bucket && !str_starts_with($path, $bucket)) $remotePath = $remote . ':' . $bucket . '/' . ltrim($path,'/');
+        if ($type === 's3' && $path === '' && $bucket) $remotePath = $backend . $bucket;
+        elseif ($type === 's3' && $bucket && !str_starts_with($path, $bucket)) $remotePath = $backend . $bucket . '/' . ltrim($path,'/');
+        else $remotePath = $backend . ltrim($path, '/');
 
-        $lsCmd = 'timeout 15 rclone lsjson '.escapeshellarg($remotePath).' 2>&1';
+        $lsCmd = 'timeout 15 rclone lsjson '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1';
         $out = trim((string)shell_exec($lsCmd));
-        // cleanup
-        @shell_exec('rclone config delete '.escapeshellarg($remote).' 2>&1');
+        // no cleanup needed — nothing was written to any config file
 
         if (str_starts_with($out, '[')) {
             $j = json_decode($out, true);
@@ -197,47 +190,51 @@ class Browse {
         if ($path==='') return ['ok'=>false,'msg'=>'Enter a folder name'];
         $rclone=trim((string)shell_exec('which rclone 2>/dev/null'));
         if (!$rclone) return ['ok'=>false,'msg'=>'rclone not found'];
-        $remote='_mkdir_'.bin2hex(random_bytes(4));
         $host=trim($in['host']??''); $port=trim((string)($in['port']??'')); $user=trim($in['user']??'');
         $pass=$in['password']??null; $sftpAuth=$in['sftpAuth']??'password'; $keyPath=trim($in['keyPath']??'');
         $bucket=trim($in['bucket']??$in['s3Bucket']??''); $region=trim($in['region']??$in['s3Region']??'');
         $endpoint=trim($in['endpoint']??$in['s3Endpoint']??''); $provider=trim($in['provider']??$in['s3Provider']??'AWS');
         $accessKey=trim($in['accessKey']??$in['s3AccessKey']??''); $secretKey=$in['secretKey']??$in['s3SecretKey']??null;
-        $createCmd='';
+
+        // Inline rclone backend params (no config file written — works even when
+        // /var/www is unwritable by www-data). Uses rclone's :backend: syntax.
         if ($type==='sftp') {
-            if ($sftpAuth==='key') $createCmd=sprintf('rclone config create %s sftp host %s user %s key_file %s --non-interactive 2>&1', escapeshellarg($remote),escapeshellarg($host),escapeshellarg($user),escapeshellarg($keyPath));
-            else {
+            if ($sftpAuth==='key') {
+                if (!$keyPath) return ['ok'=>false,'msg'=>'SSH key path required'];
+                $flags=['--sftp-host='.escapeshellarg($host),'--sftp-user='.escapeshellarg($user),'--sftp-port='.escapeshellarg($port?:'22'),'--sftp-key-file='.escapeshellarg($keyPath)];
+            } else {
                 if ($pass===null||$pass==='') return ['ok'=>false,'msg'=>'Password required'];
                 $obscured=trim((string)shell_exec('rclone obscure '.escapeshellarg($pass).' 2>/dev/null'));
-                $createCmd=sprintf('rclone config create %s sftp host %s user %s port %s pass %s --non-interactive 2>&1', escapeshellarg($remote),escapeshellarg($host),escapeshellarg($user),escapeshellarg($port?:'22'),escapeshellarg($obscured));
+                $flags=['--sftp-host='.escapeshellarg($host),'--sftp-user='.escapeshellarg($user),'--sftp-port='.escapeshellarg($port?:'22'),'--sftp-pass='.escapeshellarg($obscured)];
             }
         } elseif ($type==='ftp') {
             if ($pass===null||$pass==='') return ['ok'=>false,'msg'=>'Password required'];
             $obscured=trim((string)shell_exec('rclone obscure '.escapeshellarg($pass).' 2>/dev/null'));
-            $createCmd=sprintf('rclone config create %s ftp host %s user %s port %s pass %s --non-interactive 2>&1', escapeshellarg($remote),escapeshellarg($host),escapeshellarg($user),escapeshellarg($port?:'21'),escapeshellarg($obscured));
+            $flags=['--ftp-host='.escapeshellarg($host),'--ftp-user='.escapeshellarg($user),'--ftp-port='.escapeshellarg($port?:'21'),'--ftp-pass='.escapeshellarg($obscured)];
         } elseif ($type==='s3') {
             if ($accessKey===''||$secretKey===null||$secretKey==='') return ['ok'=>false,'msg'=>'Access key/secret required'];
-            $createCmd=sprintf('rclone config create %s s3 provider %s region %s access_key_id %s secret_access_key %s --non-interactive', escapeshellarg($remote),escapeshellarg($provider),escapeshellarg($region),escapeshellarg($accessKey),escapeshellarg($secretKey));
-            if ($endpoint) $createCmd.=' endpoint '.escapeshellarg($endpoint);
-            $createCmd.=' no_check_bucket true 2>&1';
-            @shell_exec($createCmd);
+            $flags=['--s3-provider='.escapeshellarg($provider),'--s3-region='.escapeshellarg($region),'--s3-access-key-id='.escapeshellarg($accessKey),'--s3-secret-access-key='.escapeshellarg($secretKey)];
+            if ($endpoint) $flags[]='--s3-endpoint='.escapeshellarg($endpoint);
+        } else return ['ok'=>false,'msg'=>'Unknown type'];
+        $flagStr=implode(' ',$flags);
+        $backend=':'.$type.':';
+
+        if ($type==='s3') {
             // S3 folders are virtual — `rclone mkdir` does nothing on providers that
             // can't hold empty dirs. Upload a zero-byte marker object at the target
             // path so the prefix is visible when browsing.
-            $remotePath=$remote.':'.($bucket?rtrim($bucket,'/').'/' : '').ltrim($path,'/');
-            $mkCmd='echo -n "" | timeout 15 rclone rcat '.escapeshellarg($remotePath.'/.keep').' 2>&1; echo __EXIT:$?';
+            $remotePath=$backend.($bucket?rtrim($bucket,'/').'/' : '').ltrim($path,'/');
+            $mkCmd='echo -n "" | timeout 15 rclone rcat '.escapeshellarg($remotePath.'/.keep').' '.$flagStr.' 2>&1; echo __EXIT:$?';
             $mkOut=trim((string)shell_exec($mkCmd));
-            @shell_exec('rclone config delete '.escapeshellarg($remote).' 2>&1');
             $code=0; if (preg_match('/__EXIT:(\d+)/',$mkOut,$m)) $code=(int)$m[1];
             if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];
             return ['ok'=>false,'msg'=>substr($mkOut,0,400)?:'S3 mkdir failed'];
-        } else return ['ok'=>false,'msg'=>'Unknown type'];
-        @shell_exec($createCmd);
-        $remotePath=$remote.':'.ltrim($path,'/');
-        if ($type==='s3' && $bucket) $remotePath=$remote.':'.$bucket.'/'.ltrim($path,'/');
-        $mkCmd='timeout 15 rclone mkdir '.escapeshellarg($remotePath).' 2>&1; echo __EXIT:$?';
+        }
+
+        // sftp / ftp
+        $remotePath=$backend.ltrim($path,'/');
+        $mkCmd='timeout 15 rclone mkdir '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1; echo __EXIT:$?';
         $out=trim((string)shell_exec($mkCmd));
-        @shell_exec('rclone config delete '.escapeshellarg($remote).' 2>&1');
         $code=0; if (preg_match('/__EXIT:(\d+)/',$out,$m)) $code=(int)$m[1];
         if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];
         return ['ok'=>false,'msg'=>substr($out,0,400)?:'mkdir failed'];
