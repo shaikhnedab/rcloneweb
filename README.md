@@ -1,7 +1,7 @@
 # 📦 rcloneweb — Beautiful rclone backup panel
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.11-00E5CC?style=for-the-badge&logo=github" />
+  <img src="https://img.shields.io/badge/version-1.0.12-00E5CC?style=for-the-badge&logo=github" />
   <img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=for-the-badge&logo=php&logoColor=white" />
   <img src="https://img.shields.io/badge/rclone-v1.75-3A9BDC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Nginx-Apache-269539?style=for-the-badge&logo=nginx" />
