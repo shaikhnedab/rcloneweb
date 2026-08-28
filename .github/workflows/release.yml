@@ -1,61 +1,60 @@
-name: auto-release-patch
+name: release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.0.10). Leave empty to auto-bump the patch number.'
+        required: false
+        default: ''
   push:
     branches: [main]
-    paths-ignore:
-      - 'CHANGELOG.md'
-      - 'VERSION'
-      - '.github/workflows/release.yml'
 
 permissions:
   contents: write
 
 jobs:
-  bump:
+  release:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip-release]')"
+    # Only when explicitly asked: a manual dispatch, or a push whose message contains [release]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]'))
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Bump patch version
+
+      - name: Determine version
+        id: ver
         run: |
           set -e
-          ver=$(cat VERSION)
-          echo "Current $ver"
-          IFS='.' read -r maj min pat <<< "$ver"
-          pat=$((pat+1))
-          new="$maj.$min.$pat"
-          echo "$new" > VERSION
-          # prepend changelog
-          today=$(date +%Y-%m-%d)
-          # create entry if not exists
-          if ! grep -q "## \[$new\]" CHANGELOG.md; then
-            awk -v v="$new" -v d="$today" '
-              /^## \[1\.0\.0\]/ { print "## [" v "] - " d "\n\n### Changed\n- Patch release via auto-release workflow.\n"; }
-              { print }
-            ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
-            # update link at bottom
-            echo "" >> CHANGELOG.md
-            # ensure link exists
-            grep -q "\[$new\]" CHANGELOG.md || echo "[$new]: https://github.com/${{ github.repository }}/releases/tag/v$new" >> CHANGELOG.md
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            new="${{ github.event.inputs.version }}"
+          else
+            cur=$(cat VERSION)
+            IFS='.' read -r maj min pat <<< "$cur"
+            pat=$((pat + 1))
+            new="$maj.$min.$pat"
           fi
-          # update README version badge (scoped to the shields.io badge only, so we
-          # never rewrite unrelated dotted numbers like the 127.0.0.1 proxy_pass IP)
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Bump VERSION + README badge
+        run: |
+          set -e
+          new="${{ steps.ver.outputs.new }}"
+          echo "$new" > VERSION
+          # scoped to the shields.io badge only — never rewrites 127.0.0.1 etc.
           sed -i -E "s#(badge/version-)[0-9]+\.[0-9]+\.[0-9]+#\1$new#g" README.md || true
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION CHANGELOG.md README.md
-          git commit -m "chore: bump to $new [skip-release]" || echo "no changes"
+          git add VERSION README.md
+          git commit -m "chore: release v$new [skip-release]" || echo "nothing to commit"
           git tag "v$new"
           git push origin main --follow-tags
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ver=$(cat VERSION)
-          # extract section for this version from CHANGELOG
-          awk -v v="## [$ver]" ' $0==v {p=1; print; next} p && /^## \[/ {exit} p' CHANGELOG.md > /tmp/notes.md
-          gh release create "v$ver" --title "v$ver" --notes-file /tmp/notes.md --generate-notes || gh release create "v$ver" --title "v$ver" --generate-notes
+          new="${{ steps.ver.outputs.new }}"
+          gh release create "v$new" --title "v$new" --generate-notes

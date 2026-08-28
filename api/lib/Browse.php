@@ -126,11 +126,15 @@ class Browse {
         elseif ($type === 's3' && $bucket && !str_starts_with($path, $bucket)) $remotePath = $backend . $bucket . '/' . ltrim($path,'/');
         else $remotePath = $backend . ltrim($path, '/');
 
-        $lsCmd = 'timeout 15 rclone lsjson '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1';
+        // point rclone at a writable temp config so it doesn't try to write /var/www/.rclone.conf
+        $tmpCfg = '/tmp/rclone-rw-'.getmypid().'.conf';
+        $lsCmd = 'timeout 15 rclone lsjson --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1';
         $out = trim((string)shell_exec($lsCmd));
         // no cleanup needed — nothing was written to any config file
 
-        if (str_starts_with($out, '[')) {
+        // rclone prints NOTICE lines to stderr (merged via 2>&1); extract the JSON
+        // array instead of assuming $out starts with '['
+        if (preg_match('/\[.*\]/s', $out, $jm) && is_array($j = json_decode($jm[0], true))) {
             $j = json_decode($out, true);
             if (is_array($j)) {
                 $entries = [];
@@ -223,8 +227,9 @@ class Browse {
             // S3 folders are virtual — `rclone mkdir` does nothing on providers that
             // can't hold empty dirs. Upload a zero-byte marker object at the target
             // path so the prefix is visible when browsing.
+            $tmpCfg='/tmp/rclone-rw-'.getmypid().'.conf';
             $remotePath=$backend.($bucket?rtrim($bucket,'/').'/' : '').ltrim($path,'/');
-            $mkCmd='echo -n "" | timeout 15 rclone rcat '.escapeshellarg($remotePath.'/.keep').' '.$flagStr.' 2>&1; echo __EXIT:$?';
+            $mkCmd='echo -n "" | timeout 15 rclone rcat --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath.'/.keep').' '.$flagStr.' 2>&1; echo __EXIT:$?';
             $mkOut=trim((string)shell_exec($mkCmd));
             $code=0; if (preg_match('/__EXIT:(\d+)/',$mkOut,$m)) $code=(int)$m[1];
             if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];
@@ -232,8 +237,9 @@ class Browse {
         }
 
         // sftp / ftp
+        $tmpCfg='/tmp/rclone-rw-'.getmypid().'.conf';
         $remotePath=$backend.ltrim($path,'/');
-        $mkCmd='timeout 15 rclone mkdir '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1; echo __EXIT:$?';
+        $mkCmd='timeout 15 rclone mkdir --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1; echo __EXIT:$?';
         $out=trim((string)shell_exec($mkCmd));
         $code=0; if (preg_match('/__EXIT:(\d+)/',$out,$m)) $code=(int)$m[1];
         if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];

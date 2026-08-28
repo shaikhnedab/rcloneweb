@@ -2,6 +2,11 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.10] - 2026-08-28
+
+### Fixed
+- **Destination/S3 browse returned the rclone `NOTICE:` lines instead of file listings ("can't browse files")** — `Browse::browseRemote` ran `rclone lsjson ... 2>&1`, and rclone prints `Config file not found` / `Can't save config "shell_type"` notices to stderr, which got merged *in front of* the JSON. The old `str_starts_with($out, '[')` check then failed, so the JSON was never parsed and the notices were surfaced as the error. The JSON array is now extracted with `preg_match` regardless of any leading notice lines, and all rclone calls point at a writable temp config (`/tmp/rclone-rw-<pid>.conf`) so the spurious notices disappear entirely (rclone no longer tries to write `/var/www/.rclone.conf`).
+
 ## [1.0.9] - 2026-08-28
 
 ### Fixed
@@ -111,6 +116,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
+[1.0.10]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.10
 
 
 
