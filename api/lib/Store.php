@@ -42,7 +42,8 @@ class Store {
         foreach (glob(self::DATA_DIR.'/*.json') ?: [] as $p) {
             $d = json_decode((string)file_get_contents($p), true);
             if (!is_array($d) || empty($d['id'])) continue;
-            $out[] = ['id'=>$d['id'],'name'=>$d['name']??$d['id'],'updatedAt'=>$d['updatedAt']??'','rawToken'=>$d['rawToken']??''];
+            // do not leak rawToken in list — only on GET /api/scripts/:id (still requires auth)
+            $out[] = ['id'=>$d['id'],'name'=>$d['name']??$d['id'],'updatedAt'=>$d['updatedAt']??''];
         }
         usort($out, fn($a,$b)=>strcmp($b['updatedAt']??'',$a['updatedAt']??''));
         return $out;

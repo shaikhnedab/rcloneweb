@@ -106,9 +106,9 @@ class ConnectionTest {
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
         $keyOpt = ($vps['auth']??'password')==='key' && !empty($vps['keyPath']) ? ' -i '.escapeshellarg($vps['keyPath']) : '';
-        $cmd = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 -o BatchMode=$batchMode -o PreferredAuthentications=$pref -p $port$keyOpt $user@$host 'echo ok; which rclone; echo RCLONE:\$?; which curl; echo CURL:\$?; which bash; echo BASH:\$?; rclone version 2>&1 | head -1' 2>&1";
+        $cmd = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 -o BatchMode=$batchMode -o PreferredAuthentications=$pref -p $port$keyOpt ".escapeshellarg($user.'@'.$host)." 'echo ok; which rclone; echo RCLONE:\$?; which curl; echo CURL:\$?; which bash; echo BASH:\$?; rclone version 2>&1 | head -1' 2>&1";
         if ($usePass) {
-            $cmd = 'sshpass -p '.escapeshellarg($vps['password']).' '.$cmd;
+            $cmd = 'env SSHPASS='.escapeshellarg($vps['password']).' sshpass -e '.$cmd;
         }
         $out = trim((string)shell_exec('timeout 15 '.$cmd.' 2>&1; echo __EXIT:$?'));
         $code=0; if (preg_match('/__EXIT:(\d+)/',$out,$m)) { $code=(int)$m[1]; $out=str_replace($m[0],'',$out); }

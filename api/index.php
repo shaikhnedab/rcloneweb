@@ -89,7 +89,7 @@ if (preg_match('#^/(?:raw|i)/([^/]+?)(?:\.sh)?$#', $uri, $m)) {
     $doc = Store::read($id);
     if (!$doc || empty($doc['script'])) send(404, "# script not found\n");
     $token = $_GET['token'] ?? '';
-    if (empty($doc['rawToken']) || $token !== $doc['rawToken']) send(401, "# unauthorized: append ?token=<token> (see panel → Install)\n");
+    if (empty($doc['rawToken']) || !hash_equals($doc['rawToken'], $token)) send(401, "# unauthorized: append ?token=<token> (see panel → Install)\n");
     header('Content-Type: text/x-shellscript; charset=utf-8');
     header('Cache-Control: no-store');
     echo $doc['script'];
@@ -106,7 +106,7 @@ if ($uri === '/api/fleet' && $method==='GET') send(200, Fleet::list());
 if ($uri === '/api/fleet' && $method==='POST') {
     $b=json_body();
     if (empty($b['host']) || empty($b['name'])) send(400, ['error'=>'Name and host required']);
-    $doc=Fleet::create($b);
+    try { $doc=Fleet::create($b); } catch (InvalidArgumentException $e) { send(400,['error'=>$e->getMessage()]); }
     send(201, $doc);
 }
 if (preg_match('#^/api/fleet/([^/]+)/test$#',$uri,$m) && $method==='POST') {
@@ -118,7 +118,7 @@ if (preg_match('#^/api/fleet/([^/]+)$#',$uri,$m)) {
     $id=$m[1];
     if (!Fleet::safeId($id)) send(400, ['error'=>'bad id']);
     if ($method==='GET') { $d=Fleet::read($id); if(!$d) send(404,['error'=>'not found']); send(200,$d); }
-    if ($method==='PUT') { $d=Fleet::update($id, json_body()); if(!$d) send(404,['error'=>'not found']); send(200,$d); }
+    if ($method==='PUT') { try { $d=Fleet::update($id, json_body()); } catch (InvalidArgumentException $e) { send(400,['error'=>$e->getMessage()]); } if(!$d) send(404,['error'=>'not found']); send(200,$d); }
     if ($method==='DELETE') { Fleet::delete($id); http_response_code(204); exit; }
 }
 
@@ -128,7 +128,7 @@ if ($uri === '/api/destinations' && $method==='POST') {
     $b=json_body();
     if (empty($b['name'])) send(400, ['error'=>'Name required']);
     if (empty($b['host']) && ($b['type']??'sftp')!=='s3') send(400, ['error'=>'Host required for sftp/ftp']);
-    $doc=Destinations::create($b);
+    try { $doc=Destinations::create($b); } catch (InvalidArgumentException $e) { send(400,['error'=>$e->getMessage()]); }
     send(201, $doc);
 }
 if (preg_match('#^/api/destinations/([^/]+)/test$#',$uri,$m) && $method==='POST') {
@@ -152,7 +152,7 @@ if (preg_match('#^/api/destinations/([^/]+)$#',$uri,$m)) {
     $id=$m[1];
     if (!Destinations::safeId($id)) send(400, ['error'=>'bad id']);
     if ($method==='GET') { $d=Destinations::read($id); if(!$d) send(404,['error'=>'not found']); send(200,$d); }
-    if ($method==='PUT') { $d=Destinations::update($id, json_body()); if(!$d) send(404,['error'=>'not found']); send(200,$d); }
+    if ($method==='PUT') { try { $d=Destinations::update($id, json_body()); } catch (InvalidArgumentException $e) { send(400,['error'=>$e->getMessage()]); } if(!$d) send(404,['error'=>'not found']); send(200,$d); }
     if ($method==='DELETE') { Destinations::delete($id); http_response_code(204); exit; }
 }
 
@@ -308,8 +308,49 @@ if (preg_match('#^/api/scripts/([^/]+)/runs$#',$uri,$m) && $method==='DELETE') {
         foreach (glob(__DIR__.'/../data/runs/'.$m[1].'*.json')?:[] as $p) @unlink($p);
         foreach (glob(__DIR__.'/../data/runs/'.$m[1].'__*.json')?:[] as $p) @unlink($p);
     }
-    // also clear meta pid files
-    foreach (glob(__DIR__.'/../data/runs/.pid-*')?:[] as $p) @unlink($p);
+    // also clear meta pid/cmd files for this script only
+    foreach (glob(__DIR__.'/../data/runs/.pid-*')?:[] as $p) {
+        $meta=json_decode((string)file_get_contents($p),true);
+        if (!is_array($meta)) continue;
+        if (($meta['scriptId']??'') !== $m[1]) continue;
+        @unlink($p);
+        $cmdP=str_replace('/.pid-','/.cmd-',$p);
+        @unlink($cmdP);
+    }
+    send(200,['ok'=>true]);
+}
+if (preg_match('#^/api/scripts/([^/]+)/runs/([^/]+)$#',$uri,$m) && $method==='DELETE') {
+    if (!Store::safeId($m[1])) send(400,['error'=>'bad id']);
+    $runId=$m[2];
+    if (!preg_match('/^[a-z0-9]{6,64}$/i',$runId)) send(400,['error'=>'bad run id']);
+    $scriptId=$m[1];
+    $found=false;
+    foreach (glob(__DIR__.'/../data/runs/'.$scriptId.'*.json')?:[] as $p) {
+        $j=json_decode((string)file_get_contents($p),true);
+        if (!is_array($j)) continue;
+        $origCount=count($j);
+        $new=[];
+        $target=null;
+        foreach ($j as $r) {
+            if (($r['id']??'')===$runId) {
+                $target=$r;
+                if (empty($r['finishedAt'])) send(409,['error'=>'Cannot delete a running log — stop it first']);
+                continue;
+            }
+            $new[]=$r;
+        }
+        if ($target!==null) {
+            $found=true;
+            if (count($new) !== $origCount) {
+                file_put_contents($p, json_encode(array_values($new), JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES), LOCK_EX);
+                if (!count($new)) @unlink($p);
+            }
+            break;
+        }
+    }
+    if (!$found) send(404,['error'=>'run not found']);
+    @unlink(__DIR__.'/../data/runs/.pid-'.$runId.'.json');
+    @unlink(__DIR__.'/../data/runs/.cmd-'.$runId);
     send(200,['ok'=>true]);
 }
 if (preg_match('#^/api/scripts/([^/]+)/runs/([^/]+)/log$#',$uri,$m) && $method==='GET') {
@@ -409,6 +450,7 @@ if ($uri === '/api/scheduler/status' && $method==='GET') {
 }
 if (preg_match('#^/api/schedules/([^/]+)$#',$uri,$m)) {
     $id=$m[1];
+    if (!Store::safeId($id)) send(400,['error'=>'bad id']);
     $f=__DIR__.'/../data/schedules/'.$id.'.json';
     if ($method==='GET') { if(!file_exists($f)) send(404,['error'=>'not found']); send(200, json_decode((string)file_get_contents($f),true)); }
     if ($method==='PUT') { if(!file_exists($f)) send(404,['error'=>'not found']); $d=json_decode((string)file_get_contents($f),true); $b=json_body(); $d=array_merge($d,$b); $d['id']=$id; file_put_contents($f, json_encode($d, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES), LOCK_EX); send(200,$d); }

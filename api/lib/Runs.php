@@ -98,12 +98,12 @@ class Runs {
         $host = $vps['host']; $user=$vps['user'];
         $hasSshpass = trim((string)shell_exec('which sshpass 2>/dev/null'));
         $usePass = (!empty($vps['password']) && $hasSshpass && ($vps['auth']??'password')==='password');
-        $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
+        $sshPassPrefix = $usePass ? 'env SSHPASS='.escapeshellarg($vps['password']).' sshpass -e ' : '';
         // For password auth via sshpass, BatchMode must be OFF; for key auth, keep it ON
         $batchMode = $usePass ? 'no' : 'yes';
         $sshOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.($usePass ? 'password,keyboard-interactive' : 'publickey').' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $sshOpts .= ' -i '.escapeshellarg($vps['keyPath']);
-        $sshCmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host;
+        $sshCmd = $sshPassPrefix.'ssh '.$sshOpts.' '.escapeshellarg($user.'@'.$host);
         $scpOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode='.$batchMode.' -P '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $scpOpts .= ' -i '.escapeshellarg($vps['keyPath']);
         $scpCmd = $sshPassPrefix.'scp '.$scpOpts.' '.escapeshellarg($tmpLocal).' '.escapeshellarg($user.'@'.$host.':'.$remoteTmp);
@@ -149,9 +149,9 @@ class Runs {
             $opts .= ' -i '.escapeshellarg($vps['keyPath']);
         }
         if ($usePass) {
-            return 'sshpass -p '.escapeshellarg($vps['password']).' ssh '.$opts.' '.$user.'@'.$host;
+            return 'env SSHPASS='.escapeshellarg($vps['password']).' sshpass -e ssh '.$opts.' '.escapeshellarg($user.'@'.$host);
         }
-        return 'ssh '.$opts.' '.$user.'@'.$host;
+        return 'ssh '.$opts.' '.escapeshellarg($user.'@'.$host);
         // Note: caller appends command separately for remote case, so this returns base without duplicate host
     }
 
@@ -228,9 +228,9 @@ class Runs {
                 $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
                 $keyOpt = ($vps['auth']??'password')==='key' && !empty($vps['keyPath']) ? ' -i '.escapeshellarg($vps['keyPath']) : '';
                 $opts='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.$port.$keyOpt;
-                $ssh="ssh $opts $user@$host";
+                $ssh='ssh '.$opts.' '.escapeshellarg($user.'@'.$host);
                 if ($usePass) {
-                    $ssh='sshpass -p '.escapeshellarg($vps['password']).' '.$ssh;
+                    $ssh='env SSHPASS='.escapeshellarg($vps['password']).' sshpass -e '.$ssh;
                 }
                 @exec($ssh.' '.escapeshellarg('pkill -f rcloneweb-'.$runId.'; pkill -TERM -f rclone; true').' > /dev/null 2>&1 &');
             }

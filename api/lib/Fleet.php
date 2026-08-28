@@ -65,7 +65,23 @@ class Fleet {
         return $d;
     }
 
+    static function isValidHost(string $host): bool {
+        if ($host === '') return false;
+        // allow IP or hostname (letters, digits, dot, hyphen), no shell metachars, no spaces, no ; & | $ ` etc.
+        if (!preg_match('/^[a-zA-Z0-9.\-]+$/', $host)) return false;
+        // also validate via filter_var for IP or hostname
+        if (filter_var($host, FILTER_VALIDATE_IP)) return true;
+        if (filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) return true;
+        return false;
+    }
+    static function isValidUser(string $user): bool {
+        return (bool)preg_match('/^[a-zA-Z0-9._\-@]+$/', $user);
+    }
     static function create(array $in): array {
+        $host=trim($in['host']??'');
+        $user=trim($in['user']??'root');
+        if (!self::isValidHost($host)) throw new InvalidArgumentException('Invalid host');
+        if (!self::isValidUser($user)) throw new InvalidArgumentException('Invalid user');
         $id = preg_replace('/[^a-z0-9]+/','-', strtolower(trim($in['name']??'vps')));
         $id = trim($id,'-') ?: 'vps';
         $id = substr($id,0,30);
@@ -75,9 +91,9 @@ class Fleet {
         $doc=[
             'id'=>$id,
             'name'=>trim($in['name']??$id),
-            'host'=>trim($in['host']??''),
+            'host'=>$host,
             'port'=>(int)($in['port']??22),
-            'user'=>trim($in['user']??'root'),
+            'user'=>$user,
             'auth'=>($in['auth']??'password')==='key'?'key':'password',
             'passwordEnc'=>isset($in['password']) && $in['password']!=='' ? self::encrypt($in['password']) : null,
             'keyPath'=>trim($in['keyPath']??''),
@@ -93,9 +109,17 @@ class Fleet {
         $doc=self::read($id);
         if (!$doc) return null;
         if (isset($in['name'])) $doc['name']=trim($in['name']);
-        if (isset($in['host'])) $doc['host']=trim($in['host']);
+        if (isset($in['host'])) {
+            $h=trim($in['host']);
+            if (!self::isValidHost($h)) throw new InvalidArgumentException('Invalid host');
+            $doc['host']=$h;
+        }
         if (isset($in['port'])) $doc['port']=(int)$in['port'];
-        if (isset($in['user'])) $doc['user']=trim($in['user']);
+        if (isset($in['user'])) {
+            $u=trim($in['user']);
+            if (!self::isValidUser($u)) throw new InvalidArgumentException('Invalid user');
+            $doc['user']=$u;
+        }
         if (isset($in['auth'])) $doc['auth']=$in['auth']==='key'?'key':'password';
         if (array_key_exists('password',$in) && $in['password'] !== '') {
             $doc['passwordEnc'] = self::encrypt($in['password']);

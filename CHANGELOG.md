@@ -2,6 +2,21 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.14] - 2026-08-28
+
+### Added
+- **Per-log delete** — each entry in Run history now has a `🗑 Delete` button. Calls `DELETE /api/scripts/:id/runs/:runId` (409 until stopped, requires Stop first). Bulk `Clear logs` kept. Backend filters sharded `data/runs/<id>*.json` by `runId` and cleans `.pid-<runId>.json`/`.cmd-<runId>` only for that run.
+
+### Fixed
+- **Security — schedule path traversal** — `PUT/GET/DELETE /api/schedules/:id` now checks `Store::safeId(id)` (`api/index.php:451`), preventing `../../scripts/pwned.json` overwrite.
+- **Security — SSH host/user injection (RCE)** — `Fleet::create/update` and `Destinations::create/update` validate `host`/`user` via `isValidHost`/`isValidUser` (`api/lib/Fleet.php:33`, `api/lib/Destinations.php:30`) and all `ssh`/`scp` invocations now use `escapeshellarg($user.'@'.$host)` (`api/lib/Browse.php:47`, `api/lib/Runs.php:106`, `api/lib/ConnectionTest.php:109`) with `SSHPASS=... sshpass -e` to hide passwords from `ps`.
+- **Security — stored XSS** — `public/js/app.js:201,335,631,991` now uses `textContent`/`createElement` for `v.name`/`d.name`/`e.name`/`r.name` instead of `innerHTML` interpolation.
+- **Security — rawToken leak + timing** — `api/lib/Store.php:45` `list()` no longer returns `rawToken`; `api/index.php:92` token check now uses `hash_equals`.
+- **Security — extraFlags shell injection** — `public/js/generator.js:293` and `public/js/app.js:807` reject `; | & $ \` < >` and `$()` in `extraFlags` before script generation.
+
+### Tested
+- **Schedule on current VPS/destination fleet** — created throwaway `sched-test-v2` (`/tmp` → `s3nginx:test/sched-test`, `mode:copy --dry-run`, `sourceVpsId:digirdp`, `destFleetId:s3-nginx`, `cron */5 * * * * UTC`), verified `POST /api/schedules` → `GET /api/schedules?scriptId` shows `lastRun`, `POST /api/schedules/trigger` respects 90s debounce, `GET /api/scripts/:id/runs` returns `exit 0` and `output` contains `schedule test`, then per-log delete `409` when running vs `200` after stop.
+
 ## [1.0.13] - 2026-08-28
 
 ### Added
@@ -125,6 +140,7 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.14]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.14
 [1.0.13]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.13
 [1.0.12]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.12
 [1.0.11]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.11
@@ -139,7 +155,6 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 [1.0.2]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.2
 [1.0.1]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.1
 [1.0.0]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.0
-[1.0.10]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.10
 
 
 

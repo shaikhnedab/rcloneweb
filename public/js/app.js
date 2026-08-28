@@ -198,7 +198,10 @@
     for (const v of fleetState.list) {
       const div = document.createElement('div');
       div.className = 'fleet-item';
-      div.innerHTML = `<span class="fleet-dot ${v.lastSeen?'online':''}" aria-hidden="true"></span><span class="nm">${v.name}</span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit VPS" aria-label="Edit ${v.name}">✎</button><button class="fleet-btn danger del" title="Delete VPS" aria-label="Delete ${v.name}">✕</button></span>`;
+      div.innerHTML = `<span class="fleet-dot ${v.lastSeen?'online':''}" aria-hidden="true"></span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit VPS" aria-label="Edit">✎</button><button class="fleet-btn danger del" title="Delete VPS" aria-label="Delete">✕</button></span>`;
+      const nm=document.createElement('span'); nm.className='nm'; nm.textContent=v.name; div.insertBefore(nm, div.querySelector('.fleet-actions'));
+      div.querySelector('.edit').setAttribute('aria-label', `Edit ${v.name}`);
+      div.querySelector('.del').setAttribute('aria-label', `Delete ${v.name}`);
       div.querySelector('.edit').addEventListener('click', (e)=>{ e.stopPropagation(); openVpsDialog(v.id); });
       div.querySelector('.del').addEventListener('click', async (e)=>{
         e.stopPropagation();
@@ -332,7 +335,10 @@
       const div=document.createElement('div');
       div.className='fleet-item';
       const icon = d.type==='s3' ? '🪣' : (d.type==='ftp' ? '📂' : '🔐');
-      div.innerHTML=`<span class="fleet-dot ${d.lastSeen?'online':''}" aria-hidden="true"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${d.name}</span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit destination" aria-label="Edit ${d.name}">✎</button><button class="fleet-btn danger del" title="Delete destination" aria-label="Delete ${d.name}">✕</button></span>`;
+      div.innerHTML=`<span class="fleet-dot ${d.lastSeen?'online':''}" aria-hidden="true"></span><span class="fleet-actions"><button class="fleet-btn edit" title="Edit destination" aria-label="Edit">✎</button><button class="fleet-btn danger del" title="Delete destination" aria-label="Delete">✕</button></span>`;
+      const nameSpan=document.createElement('span'); nameSpan.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; nameSpan.textContent=`${icon} ${d.name}`; div.insertBefore(nameSpan, div.querySelector('.fleet-actions'));
+      div.querySelector('.edit').setAttribute('aria-label', `Edit ${d.name}`);
+      div.querySelector('.del').setAttribute('aria-label', `Delete ${d.name}`);
       div.querySelector('.edit').addEventListener('click',e=>{e.stopPropagation(); openDestDialog(d.id);});
       div.querySelector('.del').addEventListener('click',async e=>{
         e.stopPropagation();
@@ -628,7 +634,8 @@
         div.setAttribute('tabindex', '0');
         const multi = browseState.kind==='include' || browseState.kind==='exclude';
         div.classList.toggle('multi', multi);
-        div.innerHTML = `<span>${e.isDir ? '📁' : '📄'}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span><span class="browse-check" aria-hidden="true">✓</span>${e.isDir ? '<span class="hint">dir · dbl-click to open</span>' : '<span class="hint">file</span>'}`;
+        div.innerHTML = `<span>${e.isDir ? '📁' : '📄'}</span><span class="browse-check" aria-hidden="true">✓</span>${e.isDir ? '<span class="hint">dir · dbl-click to open</span>' : '<span class="hint">file</span>'}`;
+        const nameSpan=document.createElement('span'); nameSpan.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; nameSpan.textContent=e.name; div.insertBefore(nameSpan, div.querySelector('.browse-check'));
         const selectItem = () => {
           const multi = browseState.kind==='include' || browseState.kind==='exclude';
           if (multi) {
@@ -799,10 +806,14 @@
   // ---------- persistence ----------
   async function saveDoc() {
     const cfg = cfgFromForm();
+    if (/[;|&$`<>]/.test(cfg.options.extraFlags) || /\$\(/.test(cfg.options.extraFlags)) {
+      return toast('Extra flags contains invalid shell characters', true);
+    }
     const sourceVpsId = ($('#f-source-vps')?.value) || '';
     if (!sourceVpsId) return toast('Select a Source VPS first', true);
     const destFleetId = ($('#f-dest-fleet')?.value) || 'manual';
-    const generated = Generator.buildScript(cfg);
+    let generated;
+    try { generated = Generator.buildScript(cfg); } catch (e) { return toast(e.message || 'Invalid flags', true); }
     let manualEdited = editorManuallyEdited;
     let scriptToSave = editorManuallyEdited ? state.cm.getValue() : generated;
     // if not manually edited, ensure editor reflects generated
@@ -988,15 +999,28 @@
         const div = document.createElement('div');
         div.className = 'run-item' + (r.id === (selectId || run.activeId) ? ' active' : '');
         const ok = r.exitCode === 0;
-        div.innerHTML = `<span class="st ${r.finishedAt ? (ok ? 'ok' : 'bad') : 'running'}"></span>
-          <b>${r.dryRun ? '<span class="badge-dry">DRY</span> ' : ''}${r.name}</b>
-          <span class="when">${new Date(r.startedAt).toLocaleString()}${r.finishedAt ? ` · ${r.exitCode ?? '?'} · ${Math.round((new Date(r.finishedAt) - new Date(r.startedAt)) / 1000)}s` : ' · running…'}</span>
-          <span style="margin-left:auto; display:flex; gap:6px">
-            <button class="btn tonal small view-btn" title="View log">👁 View</button>
-            <button class="btn tonal small dl-btn" title="Download log">⬇ Download</button>
-          </span>`;
+        div.innerHTML = `<span class="st ${r.finishedAt ? (ok ? 'ok' : 'bad') : 'running'}"></span><span class="when">${new Date(r.startedAt).toLocaleString()}${r.finishedAt ? ` · ${r.exitCode ?? '?'} · ${Math.round((new Date(r.finishedAt) - new Date(r.startedAt)) / 1000)}s` : ' · running…'}</span><span style="margin-left:auto; display:flex; gap:6px"><button class="btn tonal small view-btn" title="View log">👁 View</button><button class="btn tonal small dl-btn" title="Download log">⬇ Download</button><button class="btn tonal small del-btn danger" title="Delete log">🗑 Delete</button></span>`;
+        const nameEl=document.createElement('b'); if(r.dryRun){ const badge=document.createElement('span'); badge.className='badge-dry'; badge.textContent='DRY'; nameEl.appendChild(badge); nameEl.appendChild(document.createTextNode(' ')); } nameEl.appendChild(document.createTextNode(r.name)); div.insertBefore(nameEl, div.querySelector('.when'));
         div.querySelector('.view-btn').addEventListener('click', (e)=>{ e.stopPropagation(); showRun(r); document.querySelector('#run-terminal')?.scrollIntoView({behavior:'smooth', block:'center'}); });
         div.querySelector('.dl-btn').addEventListener('click', (e)=>{ e.stopPropagation(); downloadText(`run-${r.id}.log`, r.output||''); });
+        div.querySelector('.del-btn').addEventListener('click', async (e)=>{
+          e.stopPropagation();
+          if (!r.finishedAt) return toast('Stop running job first', true);
+          if (!await Dialog.confirmDanger(`Delete log ${new Date(r.startedAt).toLocaleString()}?`,'This cannot be undone.','Delete')) return;
+          const res=await fetch(`/api/scripts/${state.id}/runs/${r.id}`,{method:'DELETE'});
+          if (!res.ok) {
+            const d=await res.json().catch(()=>({}));
+            if (res.status===409) return toast(d.error||'Cannot delete running log', true);
+            return toast(d.error||'Failed to delete', true);
+          }
+          toast('Log deleted');
+          if (run.activeId===r.id) {
+            run.activeId=null;
+            $('#run-terminal').textContent='// log deleted — select another run';
+            $('#run-log-detail').textContent='select a run above to view details';
+          }
+          refreshRuns();
+        });
         div.addEventListener('click', () => showRun(r));
         hist.appendChild(div);
         if (!selectId && !liveShown && r.id === (run.activeId || runs[0]?.id)) { showRun(r); liveShown = true; }

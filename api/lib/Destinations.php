@@ -29,6 +29,14 @@ class Destinations {
 
     static function safeId(string $id): bool { return (bool)preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/i', $id); }
     static function fileFor(string $id): string { return self::DIR . '/dest-'.$id.'.json'; }
+    static function isValidHost(string $host): bool {
+        if ($host === '') return false;
+        if (!preg_match('/^[a-zA-Z0-9.\-]+$/', $host)) return false;
+        if (filter_var($host, FILTER_VALIDATE_IP)) return true;
+        if (filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) return true;
+        return false;
+    }
+    static function isValidUser(string $user): bool { return (bool)preg_match('/^[a-zA-Z0-9._\-@]+$/', $user); }
 
     static function list(): array {
         $out = [];
@@ -68,6 +76,11 @@ class Destinations {
     }
 
     static function create(array $in): array {
+        $type=in_array($in['type']??'sftp',['sftp','ftp','s3'])?$in['type']:'sftp';
+        $host=trim($in['host']??'');
+        $user=trim($in['user']??'');
+        if ($type!=='s3' && $host!=='' && !self::isValidHost($host)) throw new InvalidArgumentException('Invalid host');
+        if ($type!=='s3' && $user!=='' && !self::isValidUser($user)) throw new InvalidArgumentException('Invalid user');
         $id = preg_replace('/[^a-z0-9]+/','-', strtolower(trim($in['name']??'dest')));
         $id = trim($id,'-') ?: 'dest';
         $id = substr($id,0,30);
@@ -77,10 +90,10 @@ class Destinations {
         $doc = [
             'id'=>$id,
             'name'=>trim($in['name']??$id),
-            'type'=>in_array($in['type']??'sftp',['sftp','ftp','s3'])?$in['type']:'sftp',
-            'host'=>trim($in['host']??''),
+            'type'=>$type,
+            'host'=>$host,
             'port'=>trim((string)($in['port']??'')),
-            'user'=>trim($in['user']??''),
+            'user'=>$user,
             'remoteName'=>trim($in['remoteName']??'my-backup-remote'),
             'remotePath'=>trim($in['remotePath']??'/'),
             'sftpAuth'=>($in['sftpAuth']??'password')==='key'?'key':'password',
@@ -102,6 +115,14 @@ class Destinations {
     static function update(string $id, array $in): ?array {
         $doc=self::read($id);
         if (!$doc) return null;
+        if (isset($in['host'])) {
+            $h=trim((string)$in['host']);
+            if ($h!=='' && !self::isValidHost($h)) throw new InvalidArgumentException('Invalid host');
+        }
+        if (isset($in['user'])) {
+            $u=trim((string)$in['user']);
+            if ($u!=='' && !self::isValidUser($u)) throw new InvalidArgumentException('Invalid user');
+        }
         foreach (['name','type','host','port','user','remoteName','remotePath','sftpAuth','keyPath','s3Provider','s3Bucket','s3Region','s3Endpoint'] as $k) {
             if (isset($in[$k])) $doc[$k]=trim((string)$in[$k]);
         }

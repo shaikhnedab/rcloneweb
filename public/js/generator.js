@@ -290,7 +290,12 @@ const Generator = (() => {
     // `--progress` draws a TTY progress bar that never updates when piped (panel
     // runs scripts via ssh/pipes). Normalise it to periodic `--stats` log lines
     // so the live panel keeps streaming speed/ETA.
-    const normalizedFlags = String(o.extraFlags || '')
+    // Sanitize extraFlags to prevent shell injection on target VPS (block ; | & $ ` $() < >)
+    const rawFlags = String(o.extraFlags || '');
+    if (/[;|&$`<>]/.test(rawFlags) || /\$\(/.test(rawFlags)) {
+      throw new Error('Extra flags contains invalid shell characters (; | & $ ` < >)');
+    }
+    const normalizedFlags = rawFlags
       .split(/\s+/)
       .map(t => t === '--progress' ? '--stats 5s --stats-one-line' : t)
       .join(' ');

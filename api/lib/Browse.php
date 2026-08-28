@@ -35,7 +35,7 @@ class Browse {
             return ['ok'=>false,'msg'=>'Password auth requested but sshpass is not installed on the panel server (apt install sshpass)','path'=>$path,'entries'=>[]];
         }
         $usePass = (!empty($vps['password']) && $hasSshpass && ($vps['auth']??'password')==='password');
-        $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
+        $sshPassPrefix = $usePass ? 'env SSHPASS='.escapeshellarg($vps['password']).' sshpass -e ' : '';
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
         // UserKnownHostsFile=/dev/null avoids www-data trying to write /var/www/.ssh/known_hosts
@@ -47,7 +47,7 @@ class Browse {
         // command with proper escaping: inner path is escaped, then the whole
         // remote command is escaped for ssh.
         $remoteCmd = 'ls -1 -p --group-directories-first '.escapeshellarg($path).' 2>&1; echo __EXIT:$?; pwd 2>&1';
-        $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host.' '.escapeshellarg($remoteCmd);
+        $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.escapeshellarg($user.'@'.$host).' '.escapeshellarg($remoteCmd);
         $out = trim((string)shell_exec('timeout 15 '.$cmd.' 2>&1; echo __EXIT:$?'));
         // Parse: last __EXIT is from outer timeout, second last is from ls pwd block
         // Simpler: just split
@@ -192,14 +192,18 @@ class Browse {
         if (!$vps) return ['ok'=>false,'msg'=>'VPS not found'];
         $host=$vps['host']; $user=$vps['user']; $port=(int)($vps['port']??22);
         $hasSshpass = trim((string)shell_exec('which sshpass 2>/dev/null'));
+        $needsPass = ($vps['auth']??'password')==='password' && !empty($vps['password']);
+        if ($needsPass && !$hasSshpass) {
+            return ['ok'=>false,'msg'=>'Password auth requested but sshpass is not installed on the panel server (apt install sshpass)','path'=>$path,'entries'=>[]];
+        }
         $usePass = (!empty($vps['password']) && $hasSshpass && ($vps['auth']??'password')==='password');
-        $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
+        $sshPassPrefix = $usePass ? 'env SSHPASS='.escapeshellarg($vps['password']).' sshpass -e ' : '';
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
         $sshOpts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $sshOpts .= ' -i '.escapeshellarg($vps['keyPath']);
-        $safe = str_replace("'", "'\\''", $path);
-        $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host.' '.escapeshellarg("mkdir -p '$safe' 2>&1; echo __EXIT:\$?");
+        $remoteMkdirCmd = 'mkdir -p '.escapeshellarg($path).' 2>&1; echo __EXIT:$?';
+        $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.escapeshellarg($user.'@'.$host).' '.escapeshellarg($remoteMkdirCmd);
         $out = trim((string)shell_exec('timeout 15 '.$cmd.' 2>&1; echo __EXIT:$?'));
         if (str_contains($out, 'Permission denied')) return ['ok'=>false,'msg'=>'SSH Permission denied'];
         // extract inner exit
