@@ -42,8 +42,9 @@ jobs:
             # ensure link exists
             grep -q "\[$new\]" CHANGELOG.md || echo "[$new]: https://github.com/${{ github.repository }}/releases/tag/v$new" >> CHANGELOG.md
           fi
-          # update README badge if present
-          sed -i "s/[0-9]\+\.[0-9]\+\.[0-9]\+/$new/g" README.md || true
+          # update README version badge (scoped to the shields.io badge only, so we
+          # never rewrite unrelated dotted numbers like the 127.0.0.1 proxy_pass IP)
+          sed -i -E "s#(badge/version-)[0-9]+\.[0-9]+\.[0-9]+#\1$new#g" README.md || true
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add VERSION CHANGELOG.md README.md
