@@ -36,7 +36,7 @@ const Generator = (() => {
         enabled: true, onlyOnFail: false, url: '', username: 'Backup Bot', avatarUrl: '',
         title: 'Backup {STATUS}: {NAME}',
         description: 'Host: {HOST}\nSources: {SOURCES}\nDestination: {DEST}\nDuration: {DURATION}',
-        colorOk: '#57f287', colorFail: '#ed4245', logLines: 10,
+        colorOk: '#57f287', colorFail: '#ed4245', logLines: 10, sendLogOnFail: true, sendLogOnSuccess: true,
       },
     };
   }
@@ -373,7 +373,7 @@ const Generator = (() => {
     L.push('    else');
     L.push('        echo "Error: Sync failed for $sync_path"');
     L.push('        send_discord_notification "❌ Sync Failed" "**Path:** \\`$sync_path\\`\n**Time:** $(date)\n**Status:** Sync failed. Check logs for details." 15158332');
-    L.push('        send_discord_log  # Send log immediately if any failure occurs');
+    if (w.sendLogOnFail ?? true) L.push('        send_discord_log  # Send log immediately if any failure occurs');
     L.push('        exit 1');
     L.push('    fi');
     L.push('done');
@@ -392,8 +392,12 @@ const Generator = (() => {
     L.push('# Send completion notification');
     L.push('send_discord_notification "🎉 Backup Completed" "**End Time:** $(date)\n**Status:** All backup operations completed successfully.\n**Logs:** See attached file." 8311585');
     L.push('');
-    L.push('# Send the log file as an attachment');
-    L.push('send_discord_log');
+    if (w.sendLogOnSuccess ?? true) {
+      L.push('# Send the log file as an attachment');
+      L.push('send_discord_log');
+    } else {
+      L.push('# Log attachment disabled (uncheck "Attach log on success" to re-enable)');
+    }
     L.push('');
     L.push('exit 0');
 

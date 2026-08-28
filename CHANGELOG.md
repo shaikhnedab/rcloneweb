@@ -2,6 +2,24 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [1.0.13] - 2026-08-28
+
+### Added
+- **Discord log attachment toggles** — two new checkboxes in Builder → Discord: **Attach log on failure** and **Attach log on success** (both checked by default for back-compat). Controls `send_discord_log` calls in generated script: unchecking failure skips the immediate log upload inside the per-source `else` branch (`generator.js:376`), unchecking success skips the final `send_discord_log` after `🎉 Backup Completed` (`generator.js:396`). Text embeds (`send_discord_notification`) are unaffected; `onlyOnFail` still controls notification frequency.
+
+### Fixed
+- Removed live test dirs `/tmp/rcloneweb-test-1.0.12` (VPS `digirdp`) and `backups/test-1.0.12` (FTP `500gb-hostbrr`) created during `1.0.12` verification — verified absent via `POST /api/fleet/digirdp/browse {"path":"/tmp"}` and `POST /api/destinations/500gb-hostbrr/browse {"path":"backups"}`.
+
+## [1.0.12] - 2026-08-28
+
+### Fixed
+- **Browse SSH `Permission denied` false positive + `Connection OK` noise** — panel-side `ssh` now uses `-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR` (`api/lib/Browse.php:41`, `api/lib/ConnectionTest.php:109`, `api/lib/Runs.php:104`) so `www-data` no longer tries to write `/var/www/.ssh/known_hosts` and the `Could not create directory … (Permission denied)` warning is not mis-classified as auth failure. `rclone lsd/lsjson` now uses `--log-level ERROR --config /tmp/rclone-rw-*.conf` and success returns `Connection OK — found N items`.
+
+## [1.0.11] - 2026-08-28
+
+### Fixed
+- **Suppress rclone `NOTICE` on VPS test** — `rclone --log-level ERROR lsd` in `api/lib/ConnectionTest.php:68` and `api/lib/Browse.php:141` already suppresses `NOTICE: Config file … not found` / `Can't save config shell_type`, and success filtering strips residual `NOTICE:` lines so the VPS add page no longer shows `Connection OK — NOTICE…`.
+
 ## [1.0.10] - 2026-08-28
 
 ### Fixed
@@ -107,6 +125,11 @@ All notable changes to rcloneweb are documented here. Format follows [Keep a Cha
 - `/: Is a directory` — escaped Markdown backticks in Discord messages (`\`$sync_path\``).
 - `630 Login incorrect` handling for FTP/SFTP with empty `FTP_PASS`.
 
+[1.0.13]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.13
+[1.0.12]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.12
+[1.0.11]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.11
+[1.0.10]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.10
+[1.0.9]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.9
 [1.0.8]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.8
 [1.0.7]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.7
 [1.0.6]: https://github.com/shaikhnedab/rcloneweb/releases/tag/v1.0.6

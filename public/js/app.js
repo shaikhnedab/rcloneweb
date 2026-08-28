@@ -82,6 +82,8 @@
         colorOk: $('#f-wh-color-ok').value,
         colorFail: $('#f-wh-color-fail').value,
         logLines: parseInt($('#f-wh-loglines').value, 10) || 0,
+        sendLogOnFail: $('#f-wh-sendlog-fail').checked,
+        sendLogOnSuccess: $('#f-wh-sendlog-success').checked,
       },
     };
   }
@@ -124,6 +126,8 @@
     $('#f-wh-color-ok').value = cfg.webhook.colorOk;
     $('#f-wh-color-fail').value = cfg.webhook.colorFail;
     $('#f-wh-loglines').value = cfg.webhook.logLines;
+    $('#f-wh-sendlog-fail').checked = cfg.webhook.sendLogOnFail ?? true;
+    $('#f-wh-sendlog-success').checked = cfg.webhook.sendLogOnSuccess ?? true;
     syncSecretFieldsVisibility();
     updateDestFields();
     // source VPS is stored on the doc, not in generator config
