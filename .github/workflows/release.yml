@@ -50,7 +50,8 @@ jobs:
           git add VERSION README.md
           git commit -m "chore: release v$new [skip-release]" || echo "nothing to commit"
           git tag "v$new"
-          git push origin main --follow-tags
+          git push origin main
+          git push origin "v$new"
 
       - name: Create GitHub Release
         env:
