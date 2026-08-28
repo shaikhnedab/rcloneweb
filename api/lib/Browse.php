@@ -30,15 +30,21 @@ class Browse {
         if (!$vps) return ['ok'=>false,'msg'=>'VPS not found','path'=>$path,'entries'=>[]];
         $host=$vps['host']; $user=$vps['user']; $port=(int)($vps['port']??22);
         $hasSshpass = trim((string)shell_exec('which sshpass 2>/dev/null'));
+        $needsPass = ($vps['auth']??'password')==='password' && !empty($vps['password']);
+        if ($needsPass && !$hasSshpass) {
+            return ['ok'=>false,'msg'=>'Password auth requested but sshpass is not installed on the panel server (apt install sshpass)','path'=>$path,'entries'=>[]];
+        }
         $usePass = (!empty($vps['password']) && $hasSshpass && ($vps['auth']??'password')==='password');
         $sshPassPrefix = $usePass ? 'sshpass -p '.escapeshellarg($vps['password']).' ' : '';
         $batchMode = $usePass ? 'no' : 'yes';
         $pref = $usePass ? 'password,keyboard-interactive' : 'publickey';
         $sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode='.$batchMode.' -o PreferredAuthentications='.$pref.' -p '.(int)$port;
         if (($vps['auth']??'password')==='key' && !empty($vps['keyPath'])) $sshOpts .= ' -i '.escapeshellarg($vps['keyPath']);
-        // Use ls -1 -p to mark dirs with /, and handle spaces
-        $safePath = str_replace("'", "'\\''", $path);
-        $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host.' '.escapeshellarg("ls -1 -p --group-directories-first '$safePath' 2>&1; echo __EXIT:\$?; pwd 2>&1");
+        // Use ls -1 -p to mark dirs with /, and handle spaces. Build the remote
+        // command with proper escaping: inner path is escaped, then the whole
+        // remote command is escaped for ssh.
+        $remoteCmd = 'ls -1 -p --group-directories-first '.escapeshellarg($path).' 2>&1; echo __EXIT:$?; pwd 2>&1';
+        $cmd = $sshPassPrefix.'ssh '.$sshOpts.' '.$user.'@'.$host.' '.escapeshellarg($remoteCmd);
         $out = trim((string)shell_exec('timeout 15 '.$cmd.' 2>&1; echo __EXIT:$?'));
         // Parse: last __EXIT is from outer timeout, second last is from ls pwd block
         // Simpler: just split
@@ -47,7 +53,9 @@ class Browse {
         $exit = 0;
         if (preg_match('/__EXIT:(\d+)\s*$/', $out, $m)) { /* use last? */ }
         if (str_contains($out, 'Permission denied')) {
-            return ['ok'=>false,'msg'=>'SSH Permission denied — verify password, PasswordAuthentication & PermitRootLogin on '. $host,'path'=>$path,'entries'=>[]];
+            $raw = trim(preg_replace('/__EXIT:\d+/', '', $out));
+            $hint = substr($raw, 0, 300);
+            return ['ok'=>false,'msg'=>'SSH Permission denied — verify password, PasswordAuthentication & PermitRootLogin on '.$host.($hint ? " Raw: $hint" : ''),'path'=>$path,'entries'=>[]];
         }
         // For now, check if output contains "No such file"
         if (str_contains($out, 'No such file') || str_contains($out, 'cannot access')) {
@@ -127,8 +135,10 @@ class Browse {
         else $remotePath = $backend . ltrim($path, '/');
 
         // point rclone at a writable temp config so it doesn't try to write /var/www/.rclone.conf
+        // --log-level ERROR suppresses the "Config file not found" / "Can't save config"
+        // NOTICE lines that otherwise pollute the JSON output.
         $tmpCfg = '/tmp/rclone-rw-'.getmypid().'.conf';
-        $lsCmd = 'timeout 15 rclone lsjson --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1';
+        $lsCmd = 'timeout 15 rclone --log-level ERROR lsjson --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1';
         $out = trim((string)shell_exec($lsCmd));
         // no cleanup needed — nothing was written to any config file
 
@@ -229,7 +239,7 @@ class Browse {
             // path so the prefix is visible when browsing.
             $tmpCfg='/tmp/rclone-rw-'.getmypid().'.conf';
             $remotePath=$backend.($bucket?rtrim($bucket,'/').'/' : '').ltrim($path,'/');
-            $mkCmd='echo -n "" | timeout 15 rclone rcat --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath.'/.keep').' '.$flagStr.' 2>&1; echo __EXIT:$?';
+            $mkCmd='echo -n "" | timeout 15 rclone --log-level ERROR rcat --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath.'/.keep').' '.$flagStr.' 2>&1; echo __EXIT:$?';
             $mkOut=trim((string)shell_exec($mkCmd));
             $code=0; if (preg_match('/__EXIT:(\d+)/',$mkOut,$m)) $code=(int)$m[1];
             if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];
@@ -239,7 +249,7 @@ class Browse {
         // sftp / ftp
         $tmpCfg='/tmp/rclone-rw-'.getmypid().'.conf';
         $remotePath=$backend.ltrim($path,'/');
-        $mkCmd='timeout 15 rclone mkdir --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1; echo __EXIT:$?';
+        $mkCmd='timeout 15 rclone --log-level ERROR mkdir --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($remotePath).' '.$flagStr.' 2>&1; echo __EXIT:$?';
         $out=trim((string)shell_exec($mkCmd));
         $code=0; if (preg_match('/__EXIT:(\d+)/',$out,$m)) $code=(int)$m[1];
         if ($code===0) return ['ok'=>true,'msg'=>'Created '.$path];

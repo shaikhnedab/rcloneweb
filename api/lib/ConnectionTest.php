@@ -64,8 +64,11 @@ class ConnectionTest {
         $backend = ':'.$type.':';
         $target = ($type === 's3' && $bucket !== '') ? $backend.$bucket : $backend;
         // point rclone at a writable temp config so it doesn't try to write /var/www/.rclone.conf
+        // --log-level ERROR suppresses the harmless "Config file not found" and
+        // "Can't save config shell_type" NOTICE lines that otherwise pollute the
+        // success message (Connection OK — NOTICE...).
         $tmpCfg = '/tmp/rclone-rw-'.getmypid().'.conf';
-        $probe = 'timeout 12 rclone lsd --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($target).' '.$flagStr.' --max-depth 1 2>&1; echo __EXIT:$?';
+        $probe = 'timeout 12 rclone --log-level ERROR lsd --config '.escapeshellarg($tmpCfg).' '.escapeshellarg($target).' '.$flagStr.' --max-depth 1 2>&1; echo __EXIT:$?';
         $out = (string)shell_exec($probe);
         // no cleanup needed — nothing was written to any config file
 
