@@ -769,15 +769,50 @@ export default function App() {
                   );
                 })()}
                 <LiveStats run={runs.find(x=>!x.finishedAt) || runs[0] || null} />
-                <pre className="run-terminal" style={{ background:'#16171b', color:'#c7e3b8', borderRadius:10, padding:14, fontSize:12, height:320, overflowY:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{(() => {
+                <pre
+                  className="run-terminal"
+                  ref={(el) => {
+                    if (el) {
+                      const r = runs.find(x=>x.id===activeRunId) || runs[0];
+                      if (r && !r.finishedAt) {
+                        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+                        if (nearBottom || el.scrollTop === 0) requestAnimationFrame(()=> { el.scrollTop = el.scrollHeight; });
+                      }
+                    }
+                  }}
+                  style={{ background:'#16171b', color:'#c7e3b8', borderRadius:10, padding:14, fontSize:12, height:420, overflowY:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all', lineHeight:'1.5' }}
+                >{(() => {
                   const r = runs.find(x=>x.id===activeRunId) || runs[0];
                   if (!r) return '// no runs yet — hit "Run now" or "Dry run"';
                   if (!r.finishedAt) {
-                    const lines = r.output.split('\n');
-                    const isStats = (l:string)=> /(Transferred:|INFO\s*:\s*).*[KMGT]?i?B/i.test(l);
-                    let idx=-1; for(let i=lines.length-1;i>=0;i--) if(isStats(lines[i])){ idx=i; break; }
-                    if (idx!==-1){ let start=idx; for(let i=idx;i>=0;i--) if(lines[i].includes('Transferring:')){ start=i; break;} if(start===idx) start=Math.max(0,idx-5); return `— Live (compact) —\n${lines.slice(start).slice(-16).join('\n')}`; }
-                    return lines.filter(l=>l.trim()).slice(-16).join('\n') || '(no output)';
+                    const raw = (r.output || '').replace(/\r/g, '\n');
+                    const lines = raw.split('\n');
+                    let starting = '', transferred = '', checks = '', elapsed = '';
+                    for (const l of lines) {
+                      const t = l.trim();
+                      if (!t || /^\[setup\]|^\[warn\]|^---/.test(t)) continue;
+                      if (/Starting sync for:/.test(t)) starting = t;
+                      else if (/Transferred:/i.test(t) || (/\d+(?:\.\d+)?\s*[KMGT]?i?B\s*\/\s*\d/.test(t) && /B\/s|ETA/i.test(t))) {
+                        const clean = t.replace(/^.*\b(?:INFO|NOTICE)\s*:\s*/i, '').trim();
+                        transferred = /Transferred:/i.test(t) ? t : `Transferred: ${clean}`;
+                      }
+                      else if (/Checks:/i.test(t)) checks = t;
+                      else if (/Elapsed time:/i.test(t)) elapsed = t;
+                    }
+                    if (starting || transferred || checks || elapsed) {
+                      const elapsedComputed = (() => {
+                        const start = new Date(r.startedAt).getTime();
+                        const secs = Math.max(0, Math.floor((Date.now() - start)/1000));
+                        return `Elapsed time: ${Math.floor(secs/60)}m ${secs%60}s`;
+                      })();
+                      return [
+                        starting || 'Starting sync for: ...',
+                        transferred || 'Transferred: waiting for first stats…',
+                        checks || 'Checks: —',
+                        elapsed || elapsedComputed,
+                      ].join('\n');
+                    }
+                    return lines.slice(-24).join('\n').trim() || '(no output yet — waiting for rclone --progress)';
                   }
                   return r.output || '(no output)';
                 })()}</pre>
