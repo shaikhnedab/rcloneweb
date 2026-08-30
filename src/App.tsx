@@ -773,11 +773,10 @@ export default function App() {
                   const r = runs.find(x=>x.id===activeRunId) || runs[0];
                   if (!r) return '// no runs yet — hit "Run now" or "Dry run"';
                   if (!r.finishedAt) {
-                    const lines = r.output.split('\n');
-                    const isStats = (l:string)=> /(Transferred:|INFO\s*:\s*).*[KMGT]?i?B/i.test(l);
-                    let idx=-1; for(let i=lines.length-1;i>=0;i--) if(isStats(lines[i])){ idx=i; break; }
-                    if (idx!==-1){ let start=idx; for(let i=idx;i>=0;i--) if(lines[i].includes('Transferring:')){ start=i; break;} if(start===idx) start=Math.max(0,idx-5); return `— Live (compact) —\n${lines.slice(start).slice(-16).join('\n')}`; }
-                    return lines.filter(l=>l.trim()).slice(-16).join('\n') || '(no output)';
+                    const lines = (r.output || '').split('\n');
+                    // live: last 24 lines of full log with --progress bars
+                    const last24 = lines.slice(-24).join('\n');
+                    return last24 || '(no output yet — waiting for rclone --progress)';
                   }
                   return r.output || '(no output)';
                 })()}</pre>

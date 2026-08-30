@@ -289,7 +289,7 @@ export function buildScript(rawCfg: Partial<AppConfig>): string {
   const normalizedFlags = rawFlags
     .split(/\s+/)
     .filter(Boolean)
-    .map((tok) => (tok === '--progress' ? '--stats 5s --stats-one-line' : tok))
+    .map((tok) => (tok === '--progress' ? '--progress --stats 5s --stats-one-line' : tok))
     .join(' ');
   L.push(`RCLONE_OPTS=${shq(normalizedFlags || '--transfers 16 --checkers 32 --fast-list --stats-one-line --stats 2s --log-level INFO --retries 5 --low-level-retries 10')}`);
   L.push('');
