@@ -117,6 +117,19 @@ function friendlyCron(expr: string): string {
   return expr;
 }
 
+function NowBar() {
+  const [now, setNow] = useState(new Date());
+  useEffect(()=>{ const id=setInterval(()=>setNow(new Date()), 1000); return()=>clearInterval(id); },[]);
+  return (
+    <div className="hint" style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'center', marginBottom:8, background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px' }}>
+      <span>🕐 Now: <b>{now.toLocaleString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</b> <span style={{ opacity:0.7 }}>({Intl.DateTimeFormat().resolvedOptions().timeZone})</span> <span style={{ fontVariantNumeric:'tabular-nums', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 6px', marginLeft:6 }}>{now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</span></span>
+      <span>•</span>
+      <span>Next check: {new Date(Math.ceil(Date.now()/30000)*30000).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</span>
+      <span style={{ opacity:0.7 }}>— live</span>
+    </div>
+  );
+}
+
 function LiveStats({ run }: { run: RunRec | null }) {
   if (!run) return null;
   const out = run.output || '';
@@ -266,8 +279,6 @@ export default function App() {
   // account dialog
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountForm, setAccountForm] = useState({ currentPass:'', newUser:'', newPass:'' });
-  const [now, setNow] = useState(new Date());
-  useEffect(()=>{ const id=setInterval(()=>setNow(new Date()), 1000); return()=>clearInterval(id); },[]);
 
   const markDirty = useCallback(()=> setDirty(true), []);
 
@@ -801,12 +812,7 @@ export default function App() {
               <div>
                 <div className="preview-card" style={{ background:'var(--surface)', borderRadius:16, padding:'16px 18px', border:'1px solid var(--border)', marginBottom:18 }}>
                   <h3 style={{ marginTop:0 }}>⏰ {editingSched ? 'Edit Schedule' : 'New Schedule'}</h3>
-                  <div className="hint" style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'center', marginBottom:8, background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px' }}>
-                    <span>🕐 Now: <b>{now.toLocaleString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</b> <span style={{ opacity:0.7 }}>({Intl.DateTimeFormat().resolvedOptions().timeZone})</span> <span style={{ fontVariantNumeric:'tabular-nums', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 6px', marginLeft:6 }}>{now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</span></span>
-                    <span>•</span>
-                    <span>Next check: {new Date(Math.ceil(Date.now()/30000)*30000).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</span>
-                    <span style={{ opacity:0.7 }}>— live</span>
-                  </div>
+                  <NowBar />
                   <div className="row" style={{ display:'flex', gap:14 }}><label className="field grow">Run on VPS <select value={schedVps} onChange={e=>setSchedVps(e.target.value)}>{fleet.length ? fleet.map(v=><option key={v.id} value={v.id}>{v.name} ({v.host})</option>) : <option value="">No VPS — add one in Fleet</option>}</select></label><label className="checkbox" style={{ display:'flex', gap:7, alignItems:'center' }}><input type="checkbox" checked={schedEnabled} onChange={e=>setSchedEnabled(e.target.checked)} /> Enabled</label></div>
                   <CronBuilder value={cronExpr} onChange={setCronExpr} />
                   <div style={{ display:'flex', gap:8, marginTop:12 }}>
