@@ -172,7 +172,61 @@ server {
 
 For TLS use `certbot --nginx -d panel.example.com`. The app auto-detects `X-Forwarded-Proto: https` and sets `Secure` cookies + HSTS.
 
-**Nginx inside Docker Compose (optional):** uncomment the `nginx` service in `docker-compose.yml`, put your `nginx/rcloneweb.conf` at `./nginx/rcloneweb.conf` on the host, and change `proxy_pass http://rcloneweb:8765;` (service name, not `127.0.0.1`). Then `docker compose up -d` exposes `80`/`443` directly.
+**SSL — complete example (HTTP → HTTPS redirect + 443):**
+```nginx
+# HTTP — redirect to HTTPS
+server {
+    listen 80;
+    server_name panel.example.com;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    server_name panel.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+
+    # Auto HSTS — also sent by Node when X-Forwarded-Proto:https
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 600s;
+        client_max_body_size 10M;
+    }
+}
+```
+Quick setup:
+```bash
+sudo apt update && sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d panel.example.com   # auto-creates 443 block + redirect
+sudo certbot renew --dry-run  # test auto-renew
+# Or manual: copy the 443 block above and run `sudo nginx -t && sudo systemctl reload nginx`
+```
+
+**Nginx inside Docker Compose (optional):** uncomment the `nginx` service in `docker-compose.yml`, put your `nginx/rcloneweb.conf` at `./nginx/rcloneweb.conf` on the host, and change `proxy_pass http://rcloneweb:8765;` (service name, not `127.0.0.1`). For SSL inside compose, mount `certs`:
+```yaml
+  nginx:
+    image: nginx:alpine
+    ports: ["80:80","443:443"]
+    volumes:
+      - ./nginx/rcloneweb.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
+```
 
 ## 🛠 Scripts
 
