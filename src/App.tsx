@@ -769,16 +769,28 @@ export default function App() {
                   );
                 })()}
                 <LiveStats run={runs.find(x=>!x.finishedAt) || runs[0] || null} />
-                <pre className="run-terminal" style={{ background:'#16171b', color:'#c7e3b8', borderRadius:10, padding:14, fontSize:12, height:320, overflowY:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{(() => {
+                <pre
+                  className="run-terminal"
+                  ref={(el) => {
+                    if (el) {
+                      const r = runs.find(x=>x.id===activeRunId) || runs[0];
+                      if (r && !r.finishedAt) {
+                        // auto-scroll to bottom while running, keep position when finished
+                        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+                        if (nearBottom || el.scrollTop === 0) {
+                          requestAnimationFrame(()=> { el.scrollTop = el.scrollHeight; });
+                        }
+                      }
+                    }
+                  }}
+                  style={{ background:'#16171b', color:'#c7e3b8', borderRadius:10, padding:14, fontSize:12, height:420, overflowY:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all', lineHeight:'1.5' }}
+                >{(() => {
                   const r = runs.find(x=>x.id===activeRunId) || runs[0];
                   if (!r) return '// no runs yet — hit "Run now" or "Dry run"';
-                  if (!r.finishedAt) {
-                    const lines = (r.output || '').split('\n');
-                    // live: last 24 lines of full log with --progress bars
-                    const last24 = lines.slice(-24).join('\n');
-                    return last24 || '(no output yet — waiting for rclone --progress)';
-                  }
-                  return r.output || '(no output)';
+                  // live: full log streaming until finished (like your example)
+                  // r.output is streamed every 500ms via runs.js capTail, so this shows
+                  // Starting sync for: ... / Transferred: ... / Checks: ... / Elapsed time: ... live
+                  return r.output || '(no output yet — waiting for rclone --progress)';
                 })()}</pre>
                 <div style={{ display:'flex', justifyContent:'space-between', marginTop:20 }}>
                   <h3 style={{ margin:0 }}>Run history</h3>
