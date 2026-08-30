@@ -1,0 +1,33 @@
+services:
+  rcloneweb:
+    build: .
+    image: rcloneweb:latest
+    container_name: rcloneweb
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8765
+      - NODE_ENV=production
+      - TZ=Asia/Kolkata
+    volumes:
+      - rcloneweb-data:/app/data
+    # Uncomment to use a host rclone config
+    # - ./rclone.conf:/root/.config/rclone/rclone.conf:ro
+
+  # Optional — Nginx reverse proxy with TLS termination inside compose
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/rcloneweb.conf:/etc/nginx/conf.d/default.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   depends_on:
+  #     - rcloneweb
+
+volumes:
+  rcloneweb-data:
+    name: rcloneweb-data

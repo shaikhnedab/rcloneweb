@@ -10,7 +10,24 @@ data/destinations/*
 !data/destinations/.gitkeep
 data/schedules/*
 !data/schedules/.gitkeep
+# keep empty dir markers
+!data/.gitkeep
+# legacy secrets (never commit)
+legacy/data/auth.json
+legacy/data/.secret
+legacy/data/scripts/*.json
+legacy/data/runs/*
+!legacy/data/runs/.gitkeep
+legacy/data/fleet/*
+!legacy/data/fleet/.gitkeep
+legacy/data/destinations/*
+!legacy/data/destinations/.gitkeep
+legacy/data/schedules/*
+!legacy/data/schedules/.gitkeep
+**/.secret
+**/auth.json
 *.log
 /tmp/
 .env
 node_modules/
+dist/
