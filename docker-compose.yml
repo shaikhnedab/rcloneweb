@@ -1,7 +1,8 @@
 services:
   rcloneweb:
-    build: .
-    image: rcloneweb:latest
+    image: ghcr.io/shaikhnedab/rcloneweb:latest
+    # To build locally instead of using GHCR, uncomment:
+    # build: .
     container_name: rcloneweb
     restart: unless-stopped
     ports:

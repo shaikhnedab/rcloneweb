@@ -28,16 +28,17 @@ Build, store, schedule and run **rclone** backup scripts from a modern UI — wi
 
 ## 🚀 Quick start
 
-### 🐳 Docker (recommended)
+### 🐳 Docker (recommended) — prebuilt GHCR, no local build
 
 ```bash
-# 1. Clone
-git clone https://github.com/your/rcloneweb .
+# 1. Clone (only for compose file) or download docker-compose.yml alone
+git clone https://github.com/shaikhnedab/rcloneweb .
 cd rcloneweb
+# Timezone is Asia/Kolkata by default — change TZ in docker-compose.yml if needed
 
-# 2. Run (builds minimal Alpine image ~60MB, includes rclone + sshpass)
-#    Timezone is Asia/Kolkata by default — change TZ in docker-compose.yml if needed
-docker compose up -d --build
+# 2. Run (pulls ghcr.io/shaikhnedab/rcloneweb:latest ~60MB Alpine, includes rclone + sshpass)
+docker compose pull
+docker compose up -d
 # → http://127.0.0.1:8765
 # First visit: create the admin account. Data lives in Docker volume rcloneweb-data.
 
@@ -50,11 +51,20 @@ docker compose down
 # Reset password (keeps data)
 docker compose exec rcloneweb node server/cli.js reset-password
 
-# Cron inside container (or use host cron below)
-# Already ticks every 30s while panel is open; for 24/7 ensure container stays up
+# Cron — not needed separately: the container's in-process scheduler ticks every 30s
+# even when your browser is closed (as long as the container is up). For extra safety
+# you can also add a host cron that triggers the container:
+# * * * * * docker compose exec rcloneweb node server/cli.js cron >> /var/log/rcloneweb-cron.log 2>&1
 ```
 
-**Prebuilt GHCR image (no local build):**
+**Local build (only if you fork):**
+
+```bash
+# Uncomment `build: .` in docker-compose.yml, then:
+docker compose up -d --build
+```
+
+**GHCR prebuilt — manual pull/run without compose:**
 
 ```bash
 # Pull the latest Alpine image from GHCR (built on every tag v* and main)
@@ -111,16 +121,18 @@ npm run dev
 | `HOST` | `127.0.0.1` | Bind address (`0.0.0.0` inside Docker) |
 | `TZ` | `Asia/Kolkata` | Timezone for cron and logs (e.g. `UTC`, `Asia/Kolkata`, `America/New_York`) — set in `docker-compose.yml` or `ENV TZ=` |
 
-### System cron (optional, for 24/7 even when panel closed)
+### System cron — will it run if I close the browser?
+
+**Yes, as long as the server/container is up.** The Node server has an in-process scheduler that ticks every **30s** (even with no browser open) and triggers due cron jobs. The browser also ticks every 30s while open, but it’s not required.
+
+Host cron is **optional** — only needed if you stop the Node server/container when not using the panel. If you keep `docker compose up -d` or `npm start` running, schedules will fire on time.
 
 ```bash
-# Bare metal:
+# Bare metal — only if you stop the Node server:
 * * * * * node /path/to/rcloneweb/server/cli.js cron >> /var/log/rcloneweb-cron.log 2>&1
-# Docker:
+# Docker — only if you stop the container:
 * * * * * docker compose exec rcloneweb node server/cli.js cron >> /var/log/rcloneweb-cron.log 2>&1
 ```
-
-The panel also ticks every 30s while open.
 
 ## 🔐 Account management (no data loss)
 
