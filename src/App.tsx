@@ -56,10 +56,14 @@ function CronBuilder({ value, onChange }: { value: string; onChange: (expr: stri
       case 'custom': return state.custom;
     }
   }, [mode, state]);
-  // sync external value -> internal (guard against loop)
+  const prevValueRef = useRef(value);
+  const isFirstMount = useRef(true);
+  // sync external value -> internal, only when value was changed externally (not from our own onChange)
   useEffect(() => {
     if (!value) return;
     if (value === build()) return;
+    if (value === prevValueRef.current) return;
+    prevValueRef.current = value;
     const parts = value.trim().split(/\s+/);
     if (parts.length !== 5) { setMode('custom'); setState(s => ({ ...s, custom: value })); return; }
     const [mi, h, dom, , dow] = parts;
@@ -71,7 +75,14 @@ function CronBuilder({ value, onChange }: { value: string; onChange: (expr: stri
     setMode('custom'); setState(s=>({ ...s, custom: value }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
-  useEffect(() => { const v = build(); if (v !== value) onChange(v); }, [build, onChange, value]);
+  useEffect(() => {
+    if (isFirstMount.current) { isFirstMount.current = false; return; }
+    const v = build();
+    if (v === value) return;
+    if (v === prevValueRef.current) return;
+    prevValueRef.current = v;
+    onChange(v);
+  }, [build, onChange, value]);
   const DAYS = [{v:0,n:'Sun'},{v:1,n:'Mon'},{v:2,n:'Tue'},{v:3,n:'Wed'},{v:4,n:'Thu'},{v:5,n:'Fri'},{v:6,n:'Sat'}];
   const describeCron = (expr: string) => {
     const [mi,h,dom,,dow] = expr.split(' ');
