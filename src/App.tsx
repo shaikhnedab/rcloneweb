@@ -655,7 +655,7 @@ export default function App() {
                       <label className="field">Bandwidth limit <input value={cfg.options.bandwidth} onChange={e=>{ setCfg(c=>({...c,options:{...c.options,bandwidth:e.target.value}})); markDirty(); }} placeholder="e.g. 10M or off" /></label>
                       <label className="field">Delete older than (days) <input type="number" value={cfg.options.retentionDays||''} onChange={e=>{ setCfg(c=>({...c,options:{...c.options,retentionDays:parseInt(e.target.value,10)||0}})); markDirty(); }} placeholder="0 = off" /></label>
                       <label className="field grow">Log file <input value={cfg.options.logfile} onChange={e=>{ setCfg(c=>({...c,options:{...c.options,logfile:e.target.value}})); markDirty(); }} placeholder="/var/log/rclone-backup.log" /></label>
-                      <label className="field grow">Extra rclone flags <input value={cfg.options.extraFlags} onChange={e=>{ setCfg(c=>({...c,options:{...c.options,extraFlags:e.target.value}})); markDirty(); }} placeholder="--transfers 16 ..." /></label>
+                      <label className="field grow">Extra rclone flags <input value={cfg.options.extraFlags} onChange={e=>{ setCfg(c=>({...c,options:{...c.options,extraFlags:e.target.value}})); markDirty(); }} placeholder="--transfers=16 --checkers=32 --fast-list --progress --log-level=INFO" /></label>
                     </div>
                   </fieldset>
 

@@ -38,7 +38,7 @@ export function defaultConfig(): AppConfig {
     options: {
       mode: 'sync', dryRun: false, bandwidth: '', retentionDays: 0,
       logfile: '/var/log/rclone-backup.log',
-      extraFlags: '--transfers 16 --checkers 32 --fast-list --stats-one-line --stats 2s --log-level INFO --retries 5 --low-level-retries 10',
+      extraFlags: '--transfers=16 --checkers=32 --fast-list --progress --log-level=INFO',
     },
     webhook: {
       enabled: true, onlyOnFail: false, url: '', username: 'Backup Bot', avatarUrl: '',
