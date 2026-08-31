@@ -5,7 +5,7 @@ Beautiful rclone backup panel — rebuilt from scratch in **Node.js 22 + Express
 > **This is a complete rewrite** of the PHP version. All original features are preserved, every reported bug is fixed, and modern security defaults are applied. The PHP source is kept untouched in [`legacy/`](legacy/) for reference.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.4-00E5CC?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/version-2.0.5-00E5CC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Node-22-339933?style=for-the-badge&logo=node.js" />
   <img src="https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" />

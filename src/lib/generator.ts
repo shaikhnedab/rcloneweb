@@ -38,7 +38,7 @@ export function defaultConfig(): AppConfig {
     options: {
       mode: 'sync', dryRun: false, bandwidth: '', retentionDays: 0,
       logfile: '/var/log/rclone-backup.log',
-      extraFlags: '--transfers=16 --checkers=32 --fast-list --progress --log-level=INFO',
+      extraFlags: '--transfers 8 --checkers=32 --fast-list --progress --log-level=INFO --retries 5 --low-level-retries 20 --retries-sleep 10s',
     },
     webhook: {
       enabled: true, onlyOnFail: false, url: '', username: 'Backup Bot', avatarUrl: '',
@@ -290,7 +290,7 @@ export function buildScript(rawCfg: Partial<AppConfig>): string {
     .split(/\s+/)
     .filter(Boolean)
     .join(' ');
-  L.push(`RCLONE_OPTS=${shq(normalizedFlags || '--transfers=16 --checkers=32 --fast-list --progress --log-level=INFO')}`);
+  L.push(`RCLONE_OPTS=${shq(normalizedFlags || '--transfers 8 --checkers=32 --fast-list --progress --log-level=INFO --retries 5 --low-level-retries 20 --retries-sleep 10s')}`);
   L.push('');
 
   // ---------- discord helpers (now wired to user templates) ----------
@@ -384,28 +384,36 @@ export function buildScript(rawCfg: Partial<AppConfig>): string {
   }
   L.push('');
 
-  // Start notification — respects onlyOnFail
+  // Start notification — respects onlyOnFail — real newline inside double quotes so esc_json correctly joins with \n
   if (webhookEnabled) {
     if (onlyOnFail) L.push('# Start notification skipped (onlyOnFail enabled)');
-    else L.push('send_discord_notification "🚀 Backup Started" "**Start Time:** $(date)\\n**Status:** Backup process initiated." 7506394');
+    else L.push(`send_discord_notification "🚀 Backup Started" "**Start Time:** $(date -u +"%a %b %d %H:%M:%S UTC %Y")
+**Status:** Backup process initiated." 7506394`);
   }
 
   L.push('');
   L.push('for idx in "${!sync_src[@]}"; do');
   L.push('  src="${sync_src[$idx]}"');
   L.push('  dst="${sync_dst[$idx]}"');
+  L.push('  sync_path="${sync_src[$idx]} ${sync_dst[$idx]}"');
   if (needsFilter) {
     L.push('  eval "set -- \\"\\${sync_extra_$idx[@]}\\""; ');
-    L.push('  echo "Starting sync for: $src → $dst"');
-    if (webhookEnabled && !onlyOnFail) L.push('  send_discord_notification "🔃 Sync Started" "**Path:** \\`"$src → $dst"\\`\\n**Start Time:** $(date)\\n**Status:** Sync in progress." 15844367');
+    L.push('  echo "Starting sync for: $sync_path"');
+    if (webhookEnabled && !onlyOnFail) L.push(`  send_discord_notification "🔃 Sync Started" "**Path:** $sync_path
+**Start Time:** $(date -u +"%a %b %d %H:%M:%S UTC %Y")
+**Status:** Sync in progress." 15844367`);
     L.push(`  if rclone ${o.mode} "$src" "$dst" "$@" $RCLONE_OPTS $DRYRUN_FLAG; then`);
   } else {
-    L.push('  echo "Starting sync for: $src → $dst"');
-    if (webhookEnabled && !onlyOnFail) L.push('  send_discord_notification "🔃 Sync Started" "**Path:** \\`"$src → $dst"\\`\\n**Start Time:** $(date)\\n**Status:** Sync in progress." 15844367');
+    L.push('  echo "Starting sync for: $sync_path"');
+    if (webhookEnabled && !onlyOnFail) L.push(`  send_discord_notification "🔃 Sync Started" "**Path:** $sync_path
+**Start Time:** $(date -u +"%a %b %d %H:%M:%S UTC %Y")
+**Status:** Sync in progress." 15844367`);
     L.push(`  if rclone ${o.mode} "$src" "$dst" $RCLONE_OPTS $DRYRUN_FLAG; then`);
   }
-  L.push('    echo "Sync for $src → $dst completed."');
-  if (webhookEnabled && !onlyOnFail) L.push('    send_discord_notification "✅ Sync Completed" "**Path:** \\`"$src → $dst"\\`\\n**End Time:** $(date)\\n**Status:** Sync completed successfully." 3066993');
+  L.push('    echo "Sync for $sync_path completed."');
+  if (webhookEnabled && !onlyOnFail) L.push(`    send_discord_notification "✅ Sync Completed" "**Path:** $sync_path
+**End Time:** $(date -u +"%a %b %d %H:%M:%S UTC %Y")
+**Status:** Sync completed successfully." 3066993`);
   L.push('  else');
   L.push('    echo "Error: Sync failed for $src → $dst"');
   // Failure always notifies, even with onlyOnFail (that's the point)
@@ -432,12 +440,11 @@ export function buildScript(rawCfg: Partial<AppConfig>): string {
   L.push('');
 
   if (webhookEnabled) {
-    L.push('# ---------- final notification (template-aware) ----------');
-    L.push('send_final_notification "SUCCESS" "$DUR_STR" "$DISCORD_COLOR_OK"');
-    L.push('if [[ "$DISCORD_SENDLOG_SUCCESS" == "1" ]]; then');
-    L.push('  # success log respects onlyOnFail? No — sendLogOnSuccess governs this.');
-    L.push('  send_discord_log');
-    L.push('fi');
+    L.push('# ---------- final notification ----------');
+    L.push(`send_discord_notification "🎉 Backup Completed" "**End Time:** $(date -u +"%a %b %d %H:%M:%S UTC %Y")
+**Status:** All backup operations completed successfully.
+**Logs:** See attached file." 8311585`);
+    L.push('if [[ "$DISCORD_SENDLOG_SUCCESS" == "1" ]]; then send_discord_log; fi');
   }
 
   L.push('');
