@@ -162,7 +162,9 @@ function LiveStats({ run }: { run: RunRec | null }) {
     const mEta = line.match(/ETA\s+([^\n,)]+)/i);
     if (mEta) eta = mEta[1].trim();
   }
-  const mChecks = out.match(/Checks:\s*([^\n]+)/i);
+  // Use last Checks: (not first) — during run rclone emits Checks every 2s, we want the latest
+  let mChecks: RegExpMatchArray | null = null;
+  for (const m of out.matchAll(/Checks:\s*([^\n]+)/gi)) mChecks = m;
   if (mChecks) checks = mChecks[1].trim();
   const start = new Date(run.startedAt).getTime();
   const end = run.finishedAt ? new Date(run.finishedAt).getTime() : Date.now();
