@@ -785,7 +785,7 @@ export default function App() {
                   const r = runs.find(x=>x.id===activeRunId) || runs[0];
                   if (!r) return '// no runs yet — hit "Run now" or "Dry run"';
                   if (!r.finishedAt) {
-                    const raw = (r.output || '').replace(/\r/g, '\n');
+                    const raw = (r.output || '').replace(/\r/g, '\n').replace(/(\d+s)(?=Transferred:)/g, '$1\n');
                     const lines = raw.split('\n');
                     let starting = '', transferred = '', checks = '', elapsed = '';
                     for (const l of lines) {

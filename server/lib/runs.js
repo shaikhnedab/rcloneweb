@@ -162,7 +162,8 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
   const persist = () => updateRec(scriptId, effectiveVps, runId, { output: state.buffer });
 
   const onData = (chunk) => {
-    state.buffer = capTail(state.buffer + chunk.toString('utf8'));
+    const text = chunk.toString('utf8').replace(/\r/g, '\n');
+    state.buffer = capTail(state.buffer + text);
     if (!state.persistTimer) {
       state.persistTimer = setTimeout(async () => {
         state.persistTimer = null;
