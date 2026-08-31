@@ -12,8 +12,13 @@ type ScheduleDoc = { id: string; scriptId: string; vpsId: string; cronExpr: stri
 
 // ---------- helpers ----------
 function Toast({ msg, err, onDone }: { msg: string; err: boolean; onDone: () => void }) {
-  useEffect(() => { const t = setTimeout(onDone, 2600); return () => clearTimeout(t); }, [onDone]);
-  return <div id="toast" className={err ? 'err show' : 'success show'} role="status">{msg}</div>;
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  useEffect(() => {
+    const t = setTimeout(() => onDoneRef.current(), 2600);
+    return () => clearTimeout(t);
+  }, [msg]);
+  return <div id="toast" className={err ? 'err show' : 'success show'} role="status" aria-live="polite">{msg}</div>;
 }
 
 // Generic dialog hook
