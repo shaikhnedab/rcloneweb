@@ -259,6 +259,8 @@ export default function App() {
   const [runs, setRuns] = useState<RunRec[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [runVps, setRunVps] = useState<string>('');
+  const [liveMode, setLiveMode] = useState<'compact'|'full'>(() => (localStorage.getItem('rcloneweb_liveMode') as 'compact'|'full') || 'compact');
+  useEffect(()=>{ localStorage.setItem('rcloneweb_liveMode', liveMode); }, [liveMode]);
   const pollRef = useRef<number | null>(null);
   const loadRuns = useCallback(async () => {
     if (!selectedId) return;
@@ -776,6 +778,12 @@ export default function App() {
                   );
                 })()}
                 <LiveStats run={runs.find(x=>!x.finishedAt) || runs[0] || null} />
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                  <span className="hint">Live view:</span>
+                  <button className={`btn tonal small ${liveMode==='compact'?'filled':''}`} onClick={()=>setLiveMode('compact')}>Compact</button>
+                  <button className={`btn tonal small ${liveMode==='full'?'filled':''}`} onClick={()=>setLiveMode('full')}>Full</button>
+                  <span className="hint" style={{ marginLeft:'auto' }}>{liveMode==='compact' ? '4-line details' : 'Truly full, auto-scroll, free scroll'}</span>
+                </div>
                 <pre
                   className="run-terminal"
                   ref={(el) => {
@@ -791,37 +799,36 @@ export default function App() {
                 >{(() => {
                   const r = runs.find(x=>x.id===activeRunId) || runs[0];
                   if (!r) return '// no runs yet — hit "Run now" or "Dry run"';
-                  if (!r.finishedAt) {
-                    const raw = (r.output || '').replace(/\r/g, '\n').replace(/(\d+s)(?=Transferred:)/g, '$1\n');
-                    const lines = raw.split('\n');
-                    let starting = '', transferred = '', checks = '', elapsed = '';
-                    for (const l of lines) {
-                      const t = l.trim();
-                      if (!t || /^\[setup\]|^\[warn\]|^---/.test(t)) continue;
-                      if (/Starting sync for:/.test(t)) starting = t;
-                      else if (/Transferred:/i.test(t) || (/\d+(?:\.\d+)?\s*[KMGT]?i?B\s*\/\s*\d/.test(t) && /B\/s|ETA/i.test(t))) {
-                        const clean = t.replace(/^.*\b(?:INFO|NOTICE)\s*:\s*/i, '').trim();
-                        transferred = /Transferred:/i.test(t) ? t : `Transferred: ${clean}`;
-                      }
-                      else if (/Checks:/i.test(t)) checks = t;
-                      else if (/Elapsed time:/i.test(t)) elapsed = t;
+                  if (r.finishedAt) return r.output || '(no output)';
+                  if (liveMode === 'full') return r.output || '(no output yet — waiting for rclone --progress)';
+                  const raw = (r.output || '').replace(/\r/g, '\n').replace(/(\d+s)(?=Transferred:)/g, '$1\n');
+                  const lines = raw.split('\n');
+                  let starting = '', transferred = '', checks = '', elapsed = '';
+                  for (const l of lines) {
+                    const t = l.trim();
+                    if (!t || /^\[setup\]|^\[warn\]|^---/.test(t)) continue;
+                    if (/Starting sync for:/.test(t)) starting = t;
+                    else if (/Transferred:/i.test(t) || (/\d+(?:\.\d+)?\s*[KMGT]?i?B\s*\/\s*\d/.test(t) && /B\/s|ETA/i.test(t))) {
+                      const clean = t.replace(/^.*\b(?:INFO|NOTICE)\s*:\s*/i, '').trim();
+                      transferred = /Transferred:/i.test(t) ? t : `Transferred: ${clean}`;
                     }
-                    if (starting || transferred || checks || elapsed) {
-                      const elapsedComputed = (() => {
-                        const start = new Date(r.startedAt).getTime();
-                        const secs = Math.max(0, Math.floor((Date.now() - start)/1000));
-                        return `Elapsed time: ${Math.floor(secs/60)}m ${secs%60}s`;
-                      })();
-                      return [
-                        starting || 'Starting sync for: ...',
-                        transferred || 'Transferred: waiting for first stats…',
-                        checks || 'Checks: —',
-                        elapsed || elapsedComputed,
-                      ].join('\n');
-                    }
-                    return lines.slice(-24).join('\n').trim() || '(no output yet — waiting for rclone --progress)';
+                    else if (/Checks:/i.test(t)) checks = t;
+                    else if (/Elapsed time:/i.test(t)) elapsed = t;
                   }
-                  return r.output || '(no output)';
+                  if (starting || transferred || checks || elapsed) {
+                    const elapsedComputed = (() => {
+                      const start = new Date(r.startedAt).getTime();
+                      const secs = Math.max(0, Math.floor((Date.now() - start)/1000));
+                      return `Elapsed time: ${Math.floor(secs/60)}m ${secs%60}s`;
+                    })();
+                    return [
+                      starting || 'Starting sync for: ...',
+                      transferred || 'Transferred: waiting for first stats…',
+                      checks || 'Checks: —',
+                      elapsed || elapsedComputed,
+                    ].join('\n');
+                  }
+                  return lines.slice(-24).join('\n').trim() || '(no output yet — waiting for rclone --progress)';
                 })()}</pre>
                 <div style={{ display:'flex', justifyContent:'space-between', marginTop:20 }}>
                   <h3 style={{ margin:0 }}>Run history</h3>
