@@ -1,0 +1,48 @@
+/* Sona UI bridge — Tailwind v4 theme + utilities WITHOUT preflight.
+   Preflight is intentionally omitted so the existing Fleet Pipeline
+   stylesheet keeps rendering pixel-identical. Sona components consume
+   shadcn semantic tokens below, bridged at runtime to our own
+   variables (both dark-first and [data-theme='light'] values flow
+   through automatically). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-2);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--on-primary);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface-3);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--border);
+  --color-input: var(--border-strong);
+  --color-ring: var(--primary);
+  --radius-lg: var(--radius);
+  --radius-md: var(--radius-sm);
+  --radius-sm: calc(var(--radius-sm) - 2px);
+}
+
+/* Raw shadcn/Sona token names consumed directly by installed components
+   (their own tokenStyle objects reference these). Values follow the
+   active theme automatically since they point at our variables. */
+:root {
+  --background: var(--bg);
+  --foreground: var(--text);
+  --muted-foreground: var(--muted);
+  --accent: var(--surface-3);
+  --ring: var(--primary);
+  --tabs-surface: transparent;
+  --tabs-indicator: var(--primary);
+  --color-success: var(--green);
+  --color-danger: var(--danger);
+}

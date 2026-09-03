@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DestItem, FleetItem, ScriptSummary } from '../lib/types';
-import { Icon } from '../lib/ui';
+import { FluidTooltipGroup, Icon, Tip } from '../lib/ui';
 import { timeAgo } from '../lib/format';
 
 interface Props {
@@ -33,23 +33,30 @@ export function Sidebar(p: Props) {
   const filtered = q ? p.scripts.filter((s) => s.name.toLowerCase().includes(q)) : p.scripts;
 
   return (
+    <FluidTooltipGroup orientation="vertical">
     <aside className="sidebar">
       <div className="brand">
         <span className="brand-logo"><Icon name="box" size={18} /></span>
         <span className="brand-name">rcloneweb</span>
-        <button className="icon-btn" title={p.username ? `Signed in as ${p.username}` : 'Account'} aria-label="Account settings" onClick={p.onAccount}>
-          <Icon name="settings" size={15} />
-        </button>
-        <button className="icon-btn" title="Sign out" aria-label="Sign out" onClick={p.onLogout}>
-          <Icon name="logout" size={15} />
-        </button>
+        <Tip id="tip-account" label={p.username ? `Signed in as ${p.username}` : 'Account settings'} side="right">
+          <button className="icon-btn" title={p.username ? `Signed in as ${p.username}` : 'Account'} aria-label="Account settings" onClick={p.onAccount}>
+            <Icon name="settings" size={15} />
+          </button>
+        </Tip>
+        <Tip id="tip-logout" label="Sign out" side="right">
+          <button className="icon-btn" title="Sign out" aria-label="Sign out" onClick={p.onLogout}>
+            <Icon name="logout" size={15} />
+          </button>
+        </Tip>
       </div>
 
       <button className="btn filled block" onClick={p.onNewScript}><Icon name="plus" size={14} /> New script</button>
 
       <div className="side-section">
         <div className="side-head"><Icon name="server" size={13} /> Fleet
-          <button className="side-add" aria-label="Add VPS" onClick={p.onAddVps}><Icon name="plus" size={12} /></button>
+          <Tip id="tip-add-vps" label="Add VPS" side="right">
+            <button className="side-add" aria-label="Add VPS" onClick={p.onAddVps}><Icon name="plus" size={12} /></button>
+          </Tip>
         </div>
         {p.fleet.length === 0
           ? <p className="side-empty">No VPS yet — add one to run backups over SSH.</p>
@@ -58,8 +65,12 @@ export function Sidebar(p: Props) {
               <span className={`dot ${v.lastSeen ? 'dot-ok' : 'dot-off'}`} title={v.lastSeen ? `Last seen ${timeAgo(v.lastSeen)}` : 'Never connected'} />
               <button className="side-name" title={v.host} onClick={() => p.onEditVps(v)}>{v.name}</button>
               <span className="side-actions">
-                <button className="icon-btn subtle" aria-label={`Edit ${v.name}`} onClick={() => p.onEditVps(v)}><Icon name="edit" size={13} /></button>
-                <button className="icon-btn subtle danger-text" aria-label={`Delete ${v.name}`} onClick={() => p.onDeleteVps(v)}><Icon name="trash" size={13} /></button>
+                <Tip id={`tip-vps-edit-${v.id}`} label={`Edit ${v.name}`} side="right">
+                  <button className="icon-btn subtle" aria-label={`Edit ${v.name}`} onClick={() => p.onEditVps(v)}><Icon name="edit" size={13} /></button>
+                </Tip>
+                <Tip id={`tip-vps-del-${v.id}`} label={`Delete ${v.name}`} side="right">
+                  <button className="icon-btn subtle danger-text" aria-label={`Delete ${v.name}`} onClick={() => p.onDeleteVps(v)}><Icon name="trash" size={13} /></button>
+                </Tip>
               </span>
             </div>
           ))}
@@ -67,7 +78,9 @@ export function Sidebar(p: Props) {
 
       <div className="side-section">
         <div className="side-head"><Icon name="cloud" size={13} /> Destinations
-          <button className="side-add" aria-label="Add destination" onClick={p.onAddDest}><Icon name="plus" size={12} /></button>
+          <Tip id="tip-add-dest" label="Add destination" side="right">
+            <button className="side-add" aria-label="Add destination" onClick={p.onAddDest}><Icon name="plus" size={12} /></button>
+          </Tip>
         </div>
         {p.dests.length === 0
           ? <p className="side-empty">No destinations yet. SFTP, FTP or S3.</p>
@@ -78,8 +91,12 @@ export function Sidebar(p: Props) {
                 <span className="side-type">{d.type}</span> {d.name}
               </button>
               <span className="side-actions">
-                <button className="icon-btn subtle" aria-label={`Edit ${d.name}`} onClick={() => p.onEditDest(d)}><Icon name="edit" size={13} /></button>
-                <button className="icon-btn subtle danger-text" aria-label={`Delete ${d.name}`} onClick={() => p.onDeleteDest(d)}><Icon name="trash" size={13} /></button>
+                <Tip id={`tip-dest-edit-${d.id}`} label={`Edit ${d.name}`} side="right">
+                  <button className="icon-btn subtle" aria-label={`Edit ${d.name}`} onClick={() => p.onEditDest(d)}><Icon name="edit" size={13} /></button>
+                </Tip>
+                <Tip id={`tip-dest-del-${d.id}`} label={`Delete ${d.name}`} side="right">
+                  <button className="icon-btn subtle danger-text" aria-label={`Delete ${d.name}`} onClick={() => p.onDeleteDest(d)}><Icon name="trash" size={13} /></button>
+                </Tip>
               </span>
             </div>
           ))}
@@ -100,8 +117,12 @@ export function Sidebar(p: Props) {
               <div key={s.id} className={`side-item ${s.id === p.selectedId ? 'picked' : ''}`}>
                 <button className="side-name" onClick={() => p.onOpenScript(s.id)}>{s.name}</button>
                 <span className="side-actions">
-                  <button className="icon-btn subtle" aria-label={`Duplicate ${s.name}`} title="Duplicate" onClick={() => p.onDuplicateScript(s)}><Icon name="copy" size={13} /></button>
-                  <button className="icon-btn subtle danger-text" aria-label={`Delete ${s.name}`} title="Delete" onClick={() => p.onDeleteScript(s)}><Icon name="trash" size={13} /></button>
+                  <Tip id={`tip-script-dup-${s.id}`} label={`Duplicate ${s.name}`} side="right">
+                    <button className="icon-btn subtle" aria-label={`Duplicate ${s.name}`} title="Duplicate" onClick={() => p.onDuplicateScript(s)}><Icon name="copy" size={13} /></button>
+                  </Tip>
+                  <Tip id={`tip-script-del-${s.id}`} label={`Delete ${s.name}`} side="right">
+                    <button className="icon-btn subtle danger-text" aria-label={`Delete ${s.name}`} title="Delete" onClick={() => p.onDeleteScript(s)}><Icon name="trash" size={13} /></button>
+                  </Tip>
                 </span>
               </div>
             ))}
@@ -110,10 +131,13 @@ export function Sidebar(p: Props) {
 
       <div className="side-foot">
         <span>{p.username}</span>
-        <button className="icon-btn subtle" title="Toggle theme" aria-label="Toggle theme" onClick={p.onToggleTheme}>
-          <Icon name={p.theme === 'dark' ? 'sun' : 'moon'} size={14} />
-        </button>
+        <Tip id="tip-theme" label="Toggle theme" side="right">
+          <button className="icon-btn subtle" title="Toggle theme" aria-label="Toggle theme" onClick={p.onToggleTheme}>
+            <Icon name={p.theme === 'dark' ? 'sun' : 'moon'} size={14} />
+          </button>
+        </Tip>
       </div>
     </aside>
+    </FluidTooltipGroup>
   );
 }

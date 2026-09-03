@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type * as T from '../lib/types';
 import { Field, Icon, Modal, Spinner, toast } from '../lib/ui';
+import { Button } from '../components/ui/button';
 
 // ---------- VPS (fleet) dialog ----------
 export type VpsDraft = Partial<T.FleetItem & { password?: string; keyPath?: string }>;
@@ -63,12 +64,12 @@ export function VpsDialog({ draft, onClose, onSaved }: { draft: VpsDraft; onClos
         ? <Field label="Password" hint="Leave blank to keep the saved password."><input type="password" value={d.password || ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" /></Field>
         : <Field label="Key path"><input value={d.keyPath || ''} onChange={(e) => set({ keyPath: e.target.value })} placeholder="~/.ssh/id_ed25519" /></Field>}
       <div className="dlg-test">
-        <button className="btn tonal small" disabled={testing} onClick={test}>{testing ? <Spinner size={13} /> : <Icon name="zap" size={13} />} Test connection</button>
+        <Button className="btn tonal small" disabled={testing} onClick={test}>{testing ? <Spinner size={13} /> : <Icon name="zap" size={13} />} Test connection</Button>
         {result && <span className="dlg-test-result">{result}</span>}
       </div>
       <div className="dlg-actions">
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn filled" onClick={save}>Save VPS</button>
+        <Button className="btn filled" onClick={save}>Save VPS</Button>
       </div>
     </Modal>
   );
@@ -177,12 +178,12 @@ export function DestDialog({ draft, onClose, onSaved }: { draft: DestDraft; onCl
           )}
       </div>
       <div className="dlg-test">
-        <button className="btn tonal small" disabled={testing} onClick={test}>{testing ? <Spinner size={13} /> : <Icon name="zap" size={13} />} Test connection</button>
+        <Button className="btn tonal small" disabled={testing} onClick={test}>{testing ? <Spinner size={13} /> : <Icon name="zap" size={13} />} Test connection</Button>
         {result && <span className="dlg-test-result">{result}</span>}
       </div>
       <div className="dlg-actions">
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn filled" onClick={save}>Save</button>
+        <Button className="btn filled" onClick={save}>Save</Button>
       </div>
     </Modal>
   );

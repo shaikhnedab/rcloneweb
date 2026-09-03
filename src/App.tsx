@@ -3,6 +3,9 @@ import * as Gen from './lib/generator';
 import { api } from './api';
 import type * as T from './lib/types';
 import { Icon, ToastHost, toast, useDialog } from './lib/ui';
+import FluidTabs from './components/ui/fluid-tabs/fluid-tabs';
+import { Button } from './components/ui/button';
+import HoldToDeleteButton from './components/ui/hold-to-delete-button/hold-to-delete-button';
 import { AuthView } from './views/AuthView';
 import { Sidebar } from './views/Sidebar';
 import { BuilderTab } from './views/BuilderTab';
@@ -174,9 +177,13 @@ export default function App() {
     }
   }, [cfg, cronExpr, destFleetId, doc, editorText, manualEdited, selectedId, sourceVpsId]);
 
-  const deleteDoc = useCallback(async (id: string, name: string) => {
-    const ok = await dialog.confirm('Delete script?', `Delete "${name}"? Runs and schedules for it are removed too. This cannot be undone.`, 'Delete', true);
-    if (!ok) return;
+  const deleteDoc = useCallback(async (id: string, name: string, confirmed = false) => {
+    // Deletion is deliberate by construction at the call site (hold-to-delete
+    // in the topbar); the sidebar still passes through a confirm dialog.
+    if (!confirmed) {
+      const ok = await dialog.confirm('Delete script?', `Delete "${name}"? Runs and schedules for it are removed too. This cannot be undone.`, 'Delete', true);
+      if (!ok) return;
+    }
     try {
       await api(`/api/scripts/${id}`, { method: 'DELETE' });
       if (id === selectedId) applyDoc(null);
@@ -437,32 +444,28 @@ export default function App() {
               />
               <span className={`save-status ${dirty ? 'is-dirty' : ''}`}>{dirtyLabel}</span>
               <span className="topbar-actions">
-                <button className="btn filled" onClick={saveDoc}><Icon name="save" size={14} /> Save</button>
+                <Button className="btn filled" onClick={saveDoc}><Icon name="save" size={14} /> Save</Button>
                 {selectedId && (
-                  <button className="icon-btn danger-text" title="Delete script" aria-label="Delete script" onClick={() => selectedId && deleteDoc(selectedId, cfg.name)}>
-                    <Icon name="trash" size={15} />
-                  </button>
+                  <HoldToDeleteButton
+                    label="Hold to delete"
+                    holdDuration={1200}
+                    className="hold-topbar"
+                    onDelete={() => selectedId && deleteDoc(selectedId, cfg.name, true)}
+                  />
                 )}
               </span>
             </header>
 
-            <div className="tabs" role="tablist" aria-label="Script views" onKeyDown={(e) => {
-              if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-              e.preventDefault();
-              const idx = TABS.findIndex((t) => t.id === activeTabId);
-              const next = e.key === 'ArrowRight' ? (idx + 1) % TABS.length : (idx - 1 + TABS.length) % TABS.length;
-              setTab(TABS[next].id);
-              requestAnimationFrame(() => (document.querySelector<HTMLButtonElement>(`[data-tab="${TABS[next].id}"]`))?.focus());
-            }}>
-              {TABS.map((t) => (
-                <button
-                  key={t.id} data-tab={t.id} role="tab" aria-selected={activeTabId === t.id} tabIndex={activeTabId === t.id ? 0 : -1}
-                  className={`tab ${activeTabId === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}
-                >
-                  <Icon name={t.icon} size={13} /> {t.label}
-                </button>
-              ))}
-            </div>
+            <FluidTabs
+              variant="underline"
+              ariaLabel="Script views"
+              value={activeTabId}
+              onValueChange={(v) => setTab(v as T.Tab)}
+              tabs={TABS.map((t) => ({
+                value: t.id,
+                title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
+              }))}
+            />
 
             <section className="tab-body" role="tabpanel" key={activeTabId}>
               {activeTabId === 'dashboard' && (

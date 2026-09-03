@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useReducedMotion } from 'motion/react';
 import { api } from '../api';
 import type { DestItem, FleetItem, RunRec, ScheduleDoc, ScriptSummary } from '../lib/types';
 import { friendlyCron, timeAgo } from '../lib/format';
 import { Icon } from '../lib/ui';
+import SpotlightCard from '../components/ui/spotlight-card/spotlight-card';
 
 interface Props {
   scripts: ScriptSummary[];
@@ -46,26 +48,28 @@ export function DashboardTab(p: Props) {
   const online = p.fleet.filter((v) => v.lastSeen).length;
   const okRuns = Object.values(rows).filter((r) => r.last?.finishedAt && r.last.exitCode === 0).length;
   const activeSchedules = Object.values(rows).reduce((n, r) => n + r.schedules.length, 0);
+  const reduceMotion = useReducedMotion();
+  const spotProps = { spotlightColor: 'rgba(0, 217, 190, 0.10)', spotlightSize: 280, disabled: Boolean(reduceMotion) };
 
   return (
     <div className="dash">
       <div className="stat-grid">
-        <div className="stat-card">
+        <SpotlightCard className="stat-card" {...spotProps}>
           <span className="stat-num">{p.scripts.length}</span>
           <span className="stat-label"><Icon name="code" size={13} /> Backup scripts</span>
-        </div>
-        <div className="stat-card">
+        </SpotlightCard>
+        <SpotlightCard className="stat-card" {...spotProps}>
           <span className="stat-num">{online}<span className="stat-dim">/{p.fleet.length}</span></span>
           <span className="stat-label"><Icon name="server" size={13} /> VPS online</span>
-        </div>
-        <div className="stat-card">
+        </SpotlightCard>
+        <SpotlightCard className="stat-card" {...spotProps}>
           <span className="stat-num">{okRuns}</span>
           <span className="stat-label"><Icon name="check" size={13} /> Last runs OK</span>
-        </div>
-        <div className="stat-card">
+        </SpotlightCard>
+        <SpotlightCard className="stat-card" {...spotProps}>
           <span className="stat-num">{activeSchedules}</span>
           <span className="stat-label"><Icon name="clock" size={13} /> Active schedules</span>
-        </div>
+        </SpotlightCard>
       </div>
 
       <div className="section-head"><h3>Scripts</h3></div>

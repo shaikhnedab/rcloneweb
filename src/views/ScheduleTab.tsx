@@ -3,7 +3,9 @@ import { api } from '../api';
 import type { FleetItem, ScheduleDoc } from '../lib/types';
 import { friendlyCron } from '../lib/format';
 import { CronBuilder } from '../components/CronBuilder';
-import { Field, Icon, toast } from '../lib/ui';
+import { Field, Icon, SwitchRow, toast } from '../lib/ui';
+import { Button } from '../components/ui/button';
+import { AccordionRoot, AccordionItem, AccordionItemTrigger, AccordionItemHeader, AccordionItemContent } from '../components/ui/accordion/accordion';
 
 function NowBar() {
   const [now, setNow] = useState(new Date());
@@ -84,56 +86,65 @@ export function ScheduleTab(p: Props) {
                 : <option value="">No VPS — add one in Fleet</option>}
             </select>
           </Field>
-          <label className="check-row self-end"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> <span>Enabled</span></label>
+          <SwitchRow label="Enabled" checked={enabled} onChange={setEnabled} />
         </div>
         <CronBuilder value={p.cronExpr} onChange={p.setCronExpr} />
         <div className="row spread">
           <span>
-            <button className="btn filled" onClick={save}>{editing ? 'Update schedule' : 'Add schedule'}</button>
+            <Button className="btn filled" onClick={save}>{editing ? 'Update schedule' : 'Add schedule'}</Button>
             {editing && <button className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>}
           </span>
-          <button className="btn tonal small" onClick={async () => {
+          <Button className="btn tonal small" onClick={async () => {
             try {
               const r = await api('/api/schedules/trigger', { method: 'POST' }) as { count: number };
               toast(r.count ? `Triggered ${r.count} schedule(s)` : 'No schedules due right now');
             } catch (e) { toast((e as Error).message, true); }
-          }}><Icon name="play" size={13} /> Run due now</button>
+          }}><Icon name="play" size={13} /> Run due now</Button>
         </div>
       </div>
 
       <div className="section-head"><h3>Schedules for this script</h3></div>
       {loadError && <p className="empty-error">Couldn't load schedules. <button className="btn ghost small" onClick={load}>Retry</button></p>}
       {schedules.length === 0 && !loadError && <p className="side-empty">No schedules yet — add one above.</p>}
+      {schedules.length > 0 && (
+      <AccordionRoot variant="splitted">
       {schedules.map((s) => {
         const vpsName = p.fleet.find((v) => v.id === s.vpsId)?.name || s.vpsId;
         return (
-          <div key={s.id} className="sched-item">
-            <div className="sched-info">
-              <b>{vpsName}</b>
-              <span className="chip small accent">{friendlyCron(s.cronExpr)}</span>
-              <code className="mono-chip">{s.cronExpr}</code>
-              <span className="hint-inline">{s.timezone}</span>
-              <div className="hint-inline">Created {new Date(s.createdAt).toLocaleString()}{s.lastRun ? ` · last run ${new Date(s.lastRun).toLocaleString()}` : ''}</div>
-            </div>
-            <label className="switch" title={s.enabled ? 'Disable' : 'Enable'}>
-              <input type="checkbox" checked={s.enabled} onChange={async () => {
-                await api(`/api/schedules/${s.id}`, { method: 'PUT', body: JSON.stringify({ enabled: !s.enabled }) });
-                load();
-              }} />
-              <span className="switch-track" aria-hidden="true" />
-              <span className="visually-hidden">Enabled</span>
-            </label>
-            <button className="btn ghost small" aria-label="Edit schedule" onClick={() => { setEditing(s.id); setSchedVps(s.vpsId); setEnabled(s.enabled); p.setCronExpr(s.cronExpr); }}><Icon name="edit" size={13} /></button>
-            <button className="btn ghost small danger-text" aria-label="Delete schedule" onClick={async () => {
-              const ok = await p.dialog.confirm('Delete schedule?', `The ${friendlyCron(s.cronExpr)} schedule on ${vpsName} will stop running.`, 'Delete', true);
-              if (!ok) return;
-              await api(`/api/schedules/${s.id}`, { method: 'DELETE' });
-              if (editing === s.id) setEditing(null);
-              load();
-            }}><Icon name="trash" size={13} /></button>
-          </div>
+          <AccordionItem key={s.id} value={s.id} className="sched-item">
+            <AccordionItemTrigger aria-label={`Schedule details: ${friendlyCron(s.cronExpr)} on ${vpsName}`}>
+              <AccordionItemHeader>
+                <span className="sched-summary"><b>{vpsName}</b>{' '}
+                  <span className="chip small accent">{friendlyCron(s.cronExpr)}</span>{' '}
+                  <code className="mono-chip">{s.cronExpr}</code>
+                </span>
+              </AccordionItemHeader>
+            </AccordionItemTrigger>
+            <AccordionItemContent>
+              <div className="sched-detail">
+                <span className="hint-inline">{s.timezone}</span>
+                <span className="hint-inline">Created {new Date(s.createdAt).toLocaleString()}{s.lastRun ? ` · last run ${new Date(s.lastRun).toLocaleString()}` : ''}</span>
+              </div>
+              <div className="sched-actions">
+                <SwitchRow label={s.enabled ? 'Enabled' : 'Disabled'} checked={s.enabled} onChange={async () => {
+                  await api(`/api/schedules/${s.id}`, { method: 'PUT', body: JSON.stringify({ enabled: !s.enabled }) });
+                  load();
+                }} />
+                <button className="btn ghost small" aria-label="Edit schedule" onClick={() => { setEditing(s.id); setSchedVps(s.vpsId); setEnabled(s.enabled); p.setCronExpr(s.cronExpr); }}><Icon name="edit" size={13} /></button>
+                <button className="btn ghost small danger-text" aria-label="Delete schedule" onClick={async () => {
+                  const ok = await p.dialog.confirm('Delete schedule?', `The ${friendlyCron(s.cronExpr)} schedule on ${vpsName} will stop running.`, 'Delete', true);
+                  if (!ok) return;
+                  await api(`/api/schedules/${s.id}`, { method: 'DELETE' });
+                  if (editing === s.id) setEditing(null);
+                  load();
+                }}><Icon name="trash" size={13} /></button>
+              </div>
+            </AccordionItemContent>
+          </AccordionItem>
         );
       })}
+      </AccordionRoot>
+      )}
     </div>
   );
 }

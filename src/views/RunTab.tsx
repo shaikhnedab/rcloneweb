@@ -3,6 +3,8 @@ import { api } from '../api';
 import type { FleetItem, RunRec } from '../lib/types';
 import { compactView, downloadText, elapsedSince, fmtBytes, parseRunStats } from '../lib/format';
 import { Icon, Spinner, toast } from '../lib/ui';
+import { Button } from '../components/ui/button';
+import ExpandingAction from '../components/ui/expanding-action/expanding-action';
 
 interface Props {
   scriptId: string | null;
@@ -142,6 +144,36 @@ export function RunTab(p: Props) {
     setActiveRunId(r.id);
   };
 
+  const fetchLog = async (r: RunRec): Promise<string> => {
+    if (!selectedId) return '';
+    try {
+      return await fetch(`/api/scripts/${selectedId}/runs/${r.id}/log`, { credentials: 'include' }).then((x) => x.text());
+    } catch { return ''; }
+  };
+
+  const copyLog = async (r: RunRec) => {
+    const t = await fetchLog(r);
+    if (!t) { toast('No log to copy', true); return; }
+    try { await navigator.clipboard.writeText(t); toast('Log copied'); } catch { toast('Copy failed', true); }
+  };
+
+  const downloadLog = async (r: RunRec) => {
+    const t = await fetchLog(r);
+    downloadText(`run-${r.id}.log`, t);
+  };
+
+  const deleteLog = async (r: RunRec) => {
+    if (!r.finishedAt) { toast('Stop the run first — only finished logs can be deleted', true); return; }
+    const ok = await p.dialog.confirm('Delete run log?', `Delete the ${r.dryRun ? 'dry ' : ''}run from ${new Date(r.startedAt).toLocaleString()}?`, 'Delete', true);
+    if (!ok) return;
+    try {
+      await api(`/api/scripts/${selectedId}/runs/${r.id}`, { method: 'DELETE' });
+      toast('Run deleted');
+      if (activeRun?.id === r.id) { setActiveRunId(null); setLog(''); }
+      loadRuns();
+    } catch (e) { toast((e as Error).message, true); }
+  };
+
   if (!selectedId) return <p className="hint">Save the script first.</p>;
 
   const stats = parseRunStats(log);
@@ -157,8 +189,8 @@ export function RunTab(p: Props) {
             {p.fleet.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.host})</option>)}
           </select>
         </label>
-        <button className="btn filled" disabled={anyRunning || starting} onClick={() => start(false)}>{starting ? <Spinner size={14} /> : <Icon name="play" size={14} />} Run now</button>
-        <button className="btn tonal" disabled={anyRunning || starting} onClick={() => start(true)}><Icon name="eye" size={14} /> Dry run</button>
+        <Button className="btn filled" disabled={anyRunning || starting} onClick={() => start(false)}>{starting ? <Spinner size={14} /> : <Icon name="play" size={14} />} Run now</Button>
+        <Button className="btn tonal" disabled={anyRunning || starting} onClick={() => start(true)}><Icon name="eye" size={14} /> Dry run</Button>
         {anyRunning && <button className="btn danger" onClick={stop}><Icon name="stop" size={14} /> Stop</button>}
       </div>
 
@@ -235,23 +267,23 @@ export function RunTab(p: Props) {
                 <span className="run-when">{r.vpsName} · {new Date(r.startedAt).toLocaleString()}{r.finishedAt ? ` · ${r.exitCode} · ${elapsedSince(r.startedAt, r.finishedAt)}` : ' · running…'}</span>
               </button>
               <span className="run-item-actions">
-                <button className="btn ghost small" aria-label="View log" onClick={() => viewLog(r)}><Icon name="eye" size={13} /></button>
-                <button className="btn ghost small" aria-label="Copy log" onClick={async () => {
-                  const t = await fetch(`/api/scripts/${selectedId}/runs/${r.id}/log`, { credentials: 'include' }).then((x) => x.text()).catch(() => '');
-                  if (!t) { toast('No log to copy', true); return; }
-                  try { await navigator.clipboard.writeText(t); toast('Log copied'); } catch { toast('Copy failed', true); }
-                }}><Icon name="copy" size={13} /></button>
-                <button className="btn ghost small" aria-label="Download log" onClick={async () => {
-                  const t = await fetch(`/api/scripts/${selectedId}/runs/${r.id}/log`, { credentials: 'include' }).then((x) => x.text()).catch(() => '');
-                  downloadText(`run-${r.id}.log`, t);
-                }}><Icon name="download" size={13} /></button>
-                {r.finishedAt && (
-                  <button className="btn ghost small danger-text" aria-label="Delete run" onClick={async () => {
-                    const ok = await p.dialog.confirm('Delete run log?', `Delete the ${r.dryRun ? 'dry ' : ''}run from ${new Date(r.startedAt).toLocaleString()}?`, 'Delete', true);
-                    if (!ok) return;
-                    try { await api(`/api/scripts/${selectedId}/runs/${r.id}`, { method: 'DELETE' }); toast('Run deleted'); if (activeRun?.id === r.id) { setActiveRunId(null); setLog(''); } loadRuns(); } catch (e) { toast((e as Error).message, true); }
-                  }}><Icon name="trash" size={13} /></button>
-                )}
+                <ExpandingAction
+                  trigger="Actions"
+                  backLabel="Back to run actions"
+                  triggerClassName="run-expander"
+                  onValueSelect={(v) => {
+                    if (v === 'view') viewLog(r);
+                    else if (v === 'copy') copyLog(r);
+                    else if (v === 'download') downloadLog(r);
+                    else if (v === 'delete') deleteLog(r);
+                  }}
+                  items={[
+                    { value: 'view', label: (<span className="exp-option"><Icon name="eye" size={13} /> View</span>) },
+                    { value: 'copy', label: (<span className="exp-option"><Icon name="copy" size={13} /> Copy</span>) },
+                    { value: 'download', label: (<span className="exp-option"><Icon name="download" size={13} /> Download</span>) },
+                    { value: 'delete', label: (<span className="exp-option danger-text"><Icon name="trash" size={13} /> Delete</span>), disabled: !r.finishedAt },
+                  ]}
+                />
               </span>
             </div>
           ))}

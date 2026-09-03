@@ -178,6 +178,8 @@ a { color: var(--primary); }
 .btn.small { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
 .btn.block { width: 100%; }
 .danger-text { color: var(--danger) !important; }
+/* Hold-to-delete in the topbar: fit the 38px control row. */
+.hold-topbar { height: 38px !important; min-width: 148px !important; font-size: 13px; border-radius: 10px !important; }
 .icon-btn {
   display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px;
   background: transparent; border: none; color: var(--muted); cursor: pointer;
@@ -240,20 +242,8 @@ textarea { resize: vertical; font-family: var(--font-mono); font-size: 12.5px; }
   background: rgba(255, 194, 75, 0.08); border: 1px solid rgba(255, 194, 75, 0.35);
   border-radius: 9px; padding: 8px 12px; margin: 8px 0;
 }
-.switch { position: relative; display: inline-block; cursor: pointer; }
-.switch input { position: absolute; opacity: 0; width: 44px; height: 26px; margin: 0; cursor: pointer; }
-.switch-track {
-  display: block; width: 44px; height: 26px; border-radius: 999px;
-  background: var(--surface-3); border: 1px solid var(--border-strong);
-  position: relative; transition: background 0.15s ease;
-}
-.switch-track::after {
-  content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-  border-radius: 50%; background: var(--muted); transition: transform 0.15s ease, background 0.15s ease;
-}
-.switch input:checked + .switch-track { background: var(--primary-dim); border-color: var(--primary); }
-.switch input:checked + .switch-track::after { transform: translateX(18px); background: var(--primary); }
-.switch input:focus-visible + .switch-track { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Legacy hand-rolled switch — superseded by the animated switch component. */
+.switch { display: none; }
 
 /* ---------- topbar + tabs ---------- */
 .topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -268,20 +258,9 @@ textarea { resize: vertical; font-family: var(--font-mono); font-size: 12.5px; }
 .save-status.is-dirty { color: var(--yellow); }
 .topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
-.tabs {
-  display: flex; gap: 2px; border-bottom: 1px solid var(--border);
-  margin-bottom: 20px; overflow-x: auto; scrollbar-width: none;
-}
-.tabs::-webkit-scrollbar { display: none; }
-.tab {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: none; border: none; cursor: pointer;
-  font: 600 13px/1 var(--font-body); color: var(--muted);
-  padding: 11px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px;
-  white-space: nowrap;
-}
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+/* Legacy hand-rolled tab strip — superseded by the fluid tabs component. */
+.tabs { display: none; }
+.tab-title { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .tab-body { min-height: 40vh; }
 
 /* ---------- cards & sections ---------- */
@@ -475,6 +454,11 @@ textarea { resize: vertical; font-family: var(--font-mono); font-size: 12.5px; }
 }
 .sched-info { flex: 1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .sched-info .hint-inline { width: 100%; margin: 0; }
+.sched-summary { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.sched-detail { display: flex; gap: 12px; flex-wrap: wrap; margin: 2px 0 10px; }
+.sched-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.run-expander { height: 30px !important; min-height: 30px !important; padding-top: 0 !important; padding-bottom: 0 !important; font-size: 12px; }
+.exp-option { display: inline-flex; align-items: center; gap: 7px; }
 
 /* ---------- dashboard ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 8px; }
@@ -536,13 +520,9 @@ textarea { resize: vertical; font-family: var(--font-mono); font-size: 12.5px; }
 }
 
 /* ---------- dialogs ---------- */
-.dlg-overlay {
-  position: fixed; inset: 0; z-index: 100;
-  background: rgba(3, 6, 11, 0.66); backdrop-filter: blur(3px);
-  display: grid; place-items: center; padding: 20px;
-}
-[data-theme='light'] .dlg-overlay { background: rgba(22, 34, 47, 0.35); }
-.dlg-overlay:not(.open) { display: none; }
+/* Note: overlay positioning/motion is owned by the animated dialog
+   component (Base UI portal + direction-aware motion). Only the card
+   surface tokens below still apply, via className passthrough. */
 .dlg-card {
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px;
   box-shadow: var(--shadow); padding: 20px 22px; max-width: min(92vw, 660px);
@@ -631,10 +611,7 @@ body, .sidebar, .card, .step, .source-card, .run-item, .sched-item, .dash-row, .
   transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
-.dlg-overlay { animation: overlay-in 0.18s ease; }
-.dlg-card { animation: dlg-in 0.24s cubic-bezier(0.2, 0.8, 0.3, 1); }
-@keyframes overlay-in { from { opacity: 0; } }
-@keyframes dlg-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
+/* (dialog enter/exit motion is owned by the animated dialog component) */
 
 .tab-body { animation: fade-up 0.3s ease; }
 @keyframes fade-up { from { opacity: 0; transform: translateY(7px); } }
@@ -652,7 +629,6 @@ body, .sidebar, .card, .step, .source-card, .run-item, .sched-item, .dash-row, .
 .stat-grid .stat-card:nth-child(3) { animation-delay: 100ms; }
 .stat-grid .stat-card:nth-child(4) { animation-delay: 150ms; }
 
-.tab { transition: color 0.15s ease, border-color 0.15s ease; }
 .side-item, .browse-item, .dash-mini { transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease; }
 .chip { transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease; }
 button.chip { cursor: pointer; }

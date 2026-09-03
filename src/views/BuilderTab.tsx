@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import * as Gen from '../lib/generator';
 import type { DestItem, FleetItem } from '../lib/types';
-import { Field, Icon, Spinner, toast } from '../lib/ui';
+import { Field, Icon, Spinner, SwitchRow, toast } from '../lib/ui';
 import { api } from '../api';
 
 interface Props {
@@ -166,10 +166,13 @@ export function BuilderTab(p: Props) {
                     <button className="btn ghost small" onClick={() => patchRow(idx, { include: '', exclude: '' })}>Clear filters</button>
                   </div>
                 )}
-                <label className="check-row" title={s.path === '/' ? 'Root folder — contents only' : 'When checked, the folder itself is created inside the destination'}>
-                  <input type="checkbox" checked={s.preserveParent ?? s.path !== '/'} onChange={(e) => patchRow(idx, { preserveParent: e.target.checked })} />
-                  <span><b>Include folder itself</b> <span className="hint-inline">{(s.preserveParent ?? s.path !== '/') && s.path !== '/' ? `→ …/${s.path.split('/').filter(Boolean).pop() || ''}/` : '→ contents only'}</span></span>
-                </label>
+                <SwitchRow
+                  title={s.path === '/' ? 'Root folder — contents only' : 'When checked, the folder itself is created inside the destination'}
+                  checked={s.preserveParent ?? s.path !== '/'}
+                  onChange={(v) => patchRow(idx, { preserveParent: v })}
+                  label={<b>Include folder itself</b>}
+                  hint={<span className="hint-inline">{(s.preserveParent ?? s.path !== '/') && s.path !== '/' ? `→ …/${s.path.split('/').filter(Boolean).pop() || ''}/` : '→ contents only'}</span>}
+                />
               </div>
             ))}
           </div>
@@ -234,10 +237,7 @@ export function BuilderTab(p: Props) {
             </div>
           )}
           <div className="row">
-            <label className="check-row">
-              <input type="checkbox" checked={cfg.secrets.embed} onChange={(e) => update((c) => ({ ...c, secrets: { ...c.secrets, embed: e.target.checked } }))} />
-              <span><b>Embed secret in script</b></span>
-            </label>
+            <SwitchRow label={<b>Embed secret in script</b>} checked={cfg.secrets.embed} onChange={(v) => update((c) => ({ ...c, secrets: { ...c.secrets, embed: v } }))} />
           </div>
           {cfg.secrets.embed && (
             <>
@@ -264,7 +264,7 @@ export function BuilderTab(p: Props) {
                 <option value="sync">sync (mirror)</option><option value="copy">copy (safe)</option>
               </select>
             </Field>
-            <label className="check-row self-end"><input type="checkbox" checked={cfg.options.dryRun} onChange={(e) => update((c) => ({ ...c, options: { ...c.options, dryRun: e.target.checked } }))} /> <span>Default --dry-run</span></label>
+            <SwitchRow label="Default --dry-run" checked={cfg.options.dryRun} onChange={(v) => update((c) => ({ ...c, options: { ...c.options, dryRun: v } }))} />
             <Field label="Bandwidth limit"><input value={cfg.options.bandwidth} placeholder="e.g. 10M or off" onChange={(e) => update((c) => ({ ...c, options: { ...c.options, bandwidth: e.target.value } }))} /></Field>
             <Field label="Delete older than (days)"><input type="number" value={cfg.options.retentionDays || ''} placeholder="0 = off" onChange={(e) => update((c) => ({ ...c, options: { ...c.options, retentionDays: parseInt(e.target.value, 10) || 0 } }))} /></Field>
           </div>
@@ -276,10 +276,10 @@ export function BuilderTab(p: Props) {
 
         <Step n={4} title="Discord notification">
           <div className="row wrap">
-            <label className="check-row"><input type="checkbox" checked={cfg.webhook.enabled} onChange={(e) => update((c) => ({ ...c, webhook: { ...c.webhook, enabled: e.target.checked } }))} /> <span>Enable webhook</span></label>
-            <label className="check-row"><input type="checkbox" checked={cfg.webhook.onlyOnFail} onChange={(e) => update((c) => ({ ...c, webhook: { ...c.webhook, onlyOnFail: e.target.checked } }))} /> <span>Only on failure</span></label>
-            <label className="check-row"><input type="checkbox" checked={cfg.webhook.sendLogOnFail} onChange={(e) => update((c) => ({ ...c, webhook: { ...c.webhook, sendLogOnFail: e.target.checked } }))} /> <span>Attach log on failure</span></label>
-            <label className="check-row"><input type="checkbox" checked={cfg.webhook.sendLogOnSuccess} onChange={(e) => update((c) => ({ ...c, webhook: { ...c.webhook, sendLogOnSuccess: e.target.checked } }))} /> <span>Attach log on success</span></label>
+            <SwitchRow label="Enable webhook" checked={cfg.webhook.enabled} onChange={(v) => update((c) => ({ ...c, webhook: { ...c.webhook, enabled: v } }))} />
+            <SwitchRow label="Only on failure" checked={cfg.webhook.onlyOnFail} onChange={(v) => update((c) => ({ ...c, webhook: { ...c.webhook, onlyOnFail: v } }))} />
+            <SwitchRow label="Attach log on failure" checked={cfg.webhook.sendLogOnFail} onChange={(v) => update((c) => ({ ...c, webhook: { ...c.webhook, sendLogOnFail: v } }))} />
+            <SwitchRow label="Attach log on success" checked={cfg.webhook.sendLogOnSuccess} onChange={(v) => update((c) => ({ ...c, webhook: { ...c.webhook, sendLogOnSuccess: v } }))} />
           </div>
           <Field label="Webhook URL"><input type="url" value={cfg.webhook.url} placeholder="https://discord.com/api/webhooks/…" onChange={(e) => update((c) => ({ ...c, webhook: { ...c.webhook, url: e.target.value } }))} /></Field>
           <div className="row">

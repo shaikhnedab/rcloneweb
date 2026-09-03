@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import * as Gen from '../lib/generator';
 import { CodeEditor } from '../components/CodeEditor';
-import { Icon, Spinner, toast } from '../lib/ui';
+import { Icon, Spinner, SwitchRow, toast } from '../lib/ui';
+import { Button } from '../components/ui/button';
 import { downloadText } from '../lib/format';
 
 // ---------- Script editor (CodeMirror) ----------
@@ -72,7 +73,7 @@ export function WebhookTab({ cfg }: { cfg: Gen.AppConfig }) {
       <div className="section-head"><h3>Send test notification</h3></div>
       <p className="hint">Sends sample embeds using the exact payload format of the generated script.</p>
       <div className="row">
-        <button className="btn filled" disabled={sending !== null} onClick={() => send('ok')}>{sending === 'ok' ? <Spinner size={14} /> : <Icon name="check" size={14} />} Send success test</button>
+          <Button className="btn filled" disabled={sending !== null} onClick={() => send('ok')}>{sending === 'ok' ? <Spinner size={14} /> : <Icon name="check" size={14} />} Send success test</Button>
         <button className="btn danger" disabled={sending !== null} onClick={() => send('fail')}>{sending === 'fail' ? <Spinner size={14} /> : <Icon name="alert" size={14} />} Send failure test</button>
       </div>
     </div>
@@ -159,7 +160,7 @@ export function SettingsTab(p: SettingsProps) {
           <label className="field"><span className="field-label">New password (optional)</span><input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} autoComplete="new-password" /></label>
         </div>
         <div className="row">
-          <button className="btn filled" disabled={busy === 'account'} onClick={changeAccount}>Save account</button>
+          <Button className="btn filled" disabled={busy === 'account'} onClick={changeAccount}>Save account</Button>
           <button className="btn tonal" disabled={busy === 'revoke'} onClick={revoke}><Icon name="logout" size={13} /> Sign out all sessions</button>
         </div>
       </div>
@@ -169,7 +170,7 @@ export function SettingsTab(p: SettingsProps) {
         {sched
           ? <p className="hint">{sched.enabled} active schedule(s) of {sched.total}. The in-process scheduler checks every 5 seconds.</p>
           : <p className="hint">Scheduler status unavailable.</p>}
-        <label className="check-row"><input type="checkbox" checked={p.theme === 'light'} onChange={p.onToggleTheme} /> <span>Light theme</span></label>
+        <SwitchRow label="Light theme" checked={p.theme === 'light'} onChange={p.onToggleTheme} />
       </div>
 
       <div className="card">
@@ -177,7 +178,7 @@ export function SettingsTab(p: SettingsProps) {
         <p className="hint">Downloads scripts, schedules, fleet and destinations as one JSON file. Secrets are encrypted with your passphrase — the panel's own credentials are never included.</p>
         <div className="row">
           <label className="field grow"><span className="field-label">Export passphrase (min 8 chars)</span><input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoComplete="new-password" /></label>
-          <button className="btn filled self-end" disabled={busy === 'export' || passphrase.length < 8} onClick={doExport}><Icon name="download" size={13} /> Export</button>
+          <Button className="btn filled self-end" disabled={busy === 'export' || passphrase.length < 8} onClick={doExport}><Icon name="download" size={13} /> Export</Button>
         </div>
       </div>
 
@@ -187,7 +188,7 @@ export function SettingsTab(p: SettingsProps) {
         <div className="row">
           <label className="field grow"><span className="field-label">Bundle file</span><input type="file" accept="application/json,.json" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
           <label className="field grow"><span className="field-label">Export passphrase</span><input type="password" value={importPass} onChange={(e) => setImportPass(e.target.value)} autoComplete="off" /></label>
-          <button className="btn filled self-end" disabled={busy === 'import' || !file} onClick={doImport}><Icon name="up" size={13} /> Import</button>
+          <Button className="btn filled self-end" disabled={busy === 'import' || !file} onClick={doImport}><Icon name="up" size={13} /> Import</Button>
         </div>
       </div>
     </div>

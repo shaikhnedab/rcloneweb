@@ -1,4 +1,24 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useState, useSyncExternalStore } from 'react';
+import { AnimatedDialog, AnimatedDialogContent } from '../components/ui/animated-dialog/animated-dialog';
+import AnimatedSwitch from '../components/ui/animated-switch/animated-switch';
+import { FluidTooltipGroup, FluidTooltipRoot, FluidTooltipTrigger, FluidTooltipContent } from '../components/ui/fluid-tooltip/fluid-tooltip';
+
+/** Tooltip group + labeled trigger for icon-only buttons. Keeps the native
+ *  `title` as a fallback; the fluid surface adds directional motion and
+ *  works for keyboard focus and touch where titles never appear. */
+export function Tip({ id, label, side, children }: {
+  id: string; label: string; side?: 'top' | 'right' | 'bottom' | 'left';
+  children: React.ReactElement;
+}) {
+  return (
+    <FluidTooltipRoot id={id} side={side}>
+      <FluidTooltipTrigger asChild>{children}</FluidTooltipTrigger>
+      <FluidTooltipContent>{label}</FluidTooltipContent>
+    </FluidTooltipRoot>
+  );
+}
+
+export { FluidTooltipGroup };
 
 // ---------- icons (stroke-based, 1.6px, feather style) ----------
 const PATHS: Record<string, React.ReactNode> = {
@@ -82,31 +102,22 @@ export function ToastHost() {
 }
 
 // ---------- modal primitive ----------
-export function Modal({ title, onClose, children, width = 520 }: { title: string; onClose: () => void; children: React.ReactNode; width?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const focusables = el.querySelectorAll<HTMLElement>('input, select, textarea, button');
-    (focusables[0] ?? el).focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key === 'Tab' && focusables.length) {
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+export function Modal({ onClose, children, width = 520 }: { title: string; onClose: () => void; children: React.ReactNode; width?: number }) {
+  // Single seam: every dialog (VPS, destination, browse, confirm, prompt,
+  // alert) renders through here, so all of them get the animated dialog's
+  // direction-aware motion plus Base UI focus trapping and Escape handling.
+  // Our .dlg-card tokens are kept via className — visuals are unchanged.
   return (
-    <div className="dlg-overlay open" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="dlg-card" role="dialog" aria-modal="true" aria-label={title} style={{ width }} ref={ref} tabIndex={-1}>
+    <AnimatedDialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <AnimatedDialogContent
+        from="bottom"
+        className="dlg-card"
+        style={{ width, maxWidth: 'calc(100vw - 40px)' }}
+        onBackdropClick={onClose}
+      >
         {children}
-      </div>
-    </div>
+      </AnimatedDialogContent>
+    </AnimatedDialog>
   );
 }
 
@@ -151,6 +162,21 @@ export function useDialog() {
     </Modal>
   ) : null;
   return { dlg, confirm, prompt, alert };
+}
+
+/** Labeled on/off row backed by the animated switch. Keeps the legacy
+ *  .check-row layout; the switch itself is keyboard-operable with a real
+ *  label (no bare checkbox). */
+export function SwitchRow({ label, hint, checked, onChange, title }: {
+  label: React.ReactNode; hint?: React.ReactNode; checked: boolean;
+  onChange: (v: boolean) => void; title?: string;
+}) {
+  return (
+    <label className="check-row" title={title}>
+      <AnimatedSwitch size="sm" checked={checked} onCheckedChange={onChange} aria-label={typeof label === 'string' ? label : undefined} />
+      <span>{label} {hint}</span>
+    </label>
+  );
 }
 
 /** Small labeled field wrapper. */
