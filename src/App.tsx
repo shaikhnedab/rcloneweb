@@ -461,6 +461,8 @@ export default function App() {
               ariaLabel="Script views"
               value={activeTabId}
               onValueChange={(v) => setTab(v as T.Tab)}
+              className="sona-tabs"
+              activeIndicatorClassName="sona-tab-indicator"
               tabs={TABS.map((t) => ({
                 value: t.id,
                 title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
