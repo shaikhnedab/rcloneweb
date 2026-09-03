@@ -14,11 +14,25 @@ export function read(id) {
   if (!isSafeId(id)) return null;
   const doc = readJson(fileFor(id));
   if (!doc || typeof doc !== 'object') return null;
-  if (!doc.rawToken) {
-    doc.rawToken = randomToken(12);
-    atomicWrite(fileFor(id), JSON.stringify(doc, null, 2));
-  }
+  // rawToken backfill happens in migrateRawTokens() at boot — reads never write,
+  // so unauthenticated /raw traffic can't trigger disk I/O or race with writes.
   return doc;
+}
+
+/** One-time boot migration: give legacy scripts a rawToken (under lock). */
+export async function migrateRawTokens() {
+  for (const f of fs.readdirSync(SCRIPTS_DIR)) {
+    if (!f.endsWith('.json')) continue;
+    const full = `${SCRIPTS_DIR}/${f}`;
+    const doc = readJson(full);
+    if (!doc || typeof doc !== 'object' || !doc.id || doc.rawToken) continue;
+    await withLock(full, () => {
+      const fresh = readJson(full);
+      if (!fresh || fresh.rawToken) return;
+      fresh.rawToken = randomToken(12);
+      atomicWrite(full, JSON.stringify(fresh, null, 2));
+    });
+  }
 }
 
 export async function write(doc) {

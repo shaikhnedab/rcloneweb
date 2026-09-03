@@ -18,12 +18,48 @@ function parentOf(p) {
   return trimmed.slice(0, idx);
 }
 
+/** True if `p` (after resolving symlinks) resolves inside the panel data dir. */
+function insideDataDir(p) {
+  let realData;
+  try {
+    realData = fs.realpathSync(DATA_DIR);
+  } catch {
+    realData = path.resolve(DATA_DIR);
+  }
+  let real;
+  try {
+    real = fs.realpathSync(p);
+  } catch {
+    return false; // nothing to resolve yet (e.g. mkdir target)
+  }
+  return real === realData || real.startsWith(realData + path.sep);
+}
+
+/** Lexical check for paths that may not exist yet (mkdir targets). */
+function lexicallyInsideDataDir(p) {
+  const real = path.resolve(String(p));
+  return real === path.resolve(DATA_DIR) || real.startsWith(path.resolve(DATA_DIR) + path.sep);
+}
+
+/** Deepest existing ancestor of `p`, for pre-mkdir symlink checks. */
+function deepestExisting(p) {
+  let cur = path.resolve(String(p));
+  for (let i = 0; i < 40; i += 1) {
+    if (fs.existsSync(cur)) return cur;
+    const parent = path.dirname(cur);
+    if (parent === cur) return cur;
+    cur = parent;
+  }
+  return path.resolve(String(p));
+}
+
 /** Browse the panel server's own filesystem (admin tool = shell-equivalent access). */
 export function browseLocal(rawPath) {
   const requested = String(rawPath || '/').trim() || '/';
   let real = path.resolve(requested);
-  // Guard: never expose the panel's own data dir (contains auth + secrets)
-  if (real === DATA_DIR || real.startsWith(DATA_DIR + path.sep)) {
+  // Guard: never expose the panel's own data dir (contains auth + secrets).
+  // resolve() is lexical, so re-check with realpath after stat to catch symlinks.
+  if (lexicallyInsideDataDir(real) || insideDataDir(real)) {
     return { ok: false, msg: 'Access to the panel data directory is not allowed', path: requested, entries: [] };
   }
   let stat = null;
@@ -38,6 +74,12 @@ export function browseLocal(rawPath) {
     }
   }
   if (!stat.isDirectory()) real = path.dirname(real);
+  try {
+    real = fs.realpathSync(real);
+  } catch {}
+  if (lexicallyInsideDataDir(real) || insideDataDir(real)) {
+    return { ok: false, msg: 'Access to the panel data directory is not allowed', path: requested, entries: [] };
+  }
   const entries = [];
   for (const name of fs.readdirSync(real)) {
     const full = path.join(real, name);
@@ -132,7 +174,9 @@ export async function mkdirVps(vpsId, rawPath) {
   const p = String(rawPath ?? '').trim();
   if (!p || p === '/') return { ok: false, msg: 'Enter a folder name' };
   if (!vpsId) {
-    if (p === DATA_DIR || p.startsWith(DATA_DIR + path.sep)) return { ok: false, msg: 'Cannot create inside the panel data directory' };
+    if (lexicallyInsideDataDir(p) || insideDataDir(deepestExisting(p))) {
+      return { ok: false, msg: 'Cannot create inside the panel data directory' };
+    }
     try {
       fs.mkdirSync(p, { recursive: true });
       return { ok: true, msg: `Created ${p}` };

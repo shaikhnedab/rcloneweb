@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { RUNS_DIR, safeJoin, isSafeId } from './paths.js';
+import { RUNS_DIR, LOGS_DIR, safeJoin, isSafeId } from './paths.js';
 import { withLock, atomicWrite, readJson, nowIso, randomId } from './jsonfile.js';
 import * as store from './store.js';
 import * as fleet from './fleet.js';
-import { spawnSsh } from './ssh.js';
+import * as destinations from './destinations.js';
+import { spawnSsh, runSsh } from './ssh.js';
 
 const MAX_RUNS = 25;
 const MAX_OUTPUT = 200 * 1024;
@@ -14,9 +15,19 @@ const PERSIST_INTERVAL_MS = 500;
 /** runId -> live child bookkeeping (single process owns all active runs) */
 const active = new Map();
 
+function vpsKey(vpsId) {
+  return vpsId && vpsId !== 'local' ? vpsId : 'local';
+}
+
 function shardFile(scriptId, vpsId) {
   const name = vpsId && vpsId !== 'local' ? `${scriptId}__${vpsId}.json` : `${scriptId}.json`;
   const f = safeJoin(RUNS_DIR, name);
+  if (!f) throw new Error('bad id');
+  return f;
+}
+
+export function logFileFor(scriptId, vpsId, runId) {
+  const f = safeJoin(LOGS_DIR, `${scriptId}__${vpsKey(vpsId)}__${runId}.log`);
   if (!f) throw new Error('bad id');
   return f;
 }
@@ -39,6 +50,24 @@ export function listAllRuns(scriptId) {
   }
   all.sort((a, b) => String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')));
   return all.slice(0, MAX_RUNS);
+}
+
+/** Find one run record plus its shard/vps context (metadata only — output lives in the log file). */
+export function findRun(scriptId, runId) {
+  for (const r of listAllRuns(scriptId)) {
+    if (r.id === runId) return r;
+  }
+  return null;
+}
+
+/** Full log text for a run: per-run log file, with a legacy fallback to inline output. */
+export function readLog(scriptId, runId) {
+  const rec = findRun(scriptId, runId);
+  if (!rec) return null;
+  try {
+    return fs.readFileSync(logFileFor(scriptId, rec.vpsId, runId), 'utf8');
+  } catch {}
+  return typeof rec.output === 'string' ? rec.output : '';
 }
 
 async function writeShard(scriptId, vpsId, runs) {
@@ -69,7 +98,7 @@ function updateRec(scriptId, vpsId, runId, patch) {
 
 /**
  * Start a run (local or remote). Resolves with the run record immediately;
- * output is streamed to the shard file in the background.
+ * output streams to a per-run log file, metadata to the shard JSON.
  */
 export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) {
   if (!isSafeId(scriptId)) throw new Error('bad id');
@@ -94,7 +123,7 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
     startedAt: nowIso(),
     finishedAt: null,
     exitCode: null,
-    output: '',
+    bytes: 0,
   };
 
   const shard = shardFile(scriptId, effectiveVps);
@@ -113,11 +142,14 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
     throw e;
   }
 
+  const logFile = logFileFor(scriptId, effectiveVps, runId);
   const tmpScript = path.join(RUNS_DIR, `.run-${runId}.sh`);
-  fs.writeFileSync(tmpScript, doc.script, { mode: 0o700 });
+  // Inject stored destination credentials (placeholders + non-interactive prompts).
+  const deployScript = destinations.injectSecrets(doc.script, doc.destFleetId);
+  fs.writeFileSync(tmpScript, deployScript, { mode: 0o700 });
 
   let child;
-  let remoteTmp = null;
+  let remoteBase = null;
   try {
     if (!effectiveVps) {
       child = spawn('bash', [tmpScript], {
@@ -127,21 +159,22 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } else {
-      // Persistent deploy path on VPS — update if exists, create if not (option A)
-      remoteTmp = '~/backup.sh';
-      const scriptContent = fs.readFileSync(tmpScript, 'utf8');
-      const remoteCmd =
-        `if [ -f ~/backup.sh ]; then cp ~/backup.sh ~/backup.sh.bak 2>/dev/null || true; fi; ` +
-        `cat > ~/backup.sh && chmod 700 ~/backup.sh && ` +
-        `DRY_RUN=${dryRun ? '1' : '0'} bash ~/backup.sh 2>&1; ec=$?; echo "__RW_EXIT:$ec"`;
+      // Per-run paths on the VPS: parallel runs never collide and stops are scoped.
+      // setsid makes the wrapper a process-group leader; the pidfile records the PGID.
+      remoteBase = `$HOME/rw-${runId}`;
+      const scriptContent = fs.readFileSync(tmpScript, 'utf8');      const remoteCmd =
+        `cat > ${remoteBase}.sh && chmod 700 ${remoteBase}.sh && ` +
+        `setsid bash -c "echo \\$\\$ > ${remoteBase}.pid; ` +
+        `DRY_RUN=${dryRun ? 1 : 0} bash ${remoteBase}.sh 2>&1; ec=\\$?; ` +
+        `rm -f ${remoteBase}.pid ${remoteBase}.sh; echo __RW_EXIT:\\$ec"`;
       child = await spawnSsh(vps, remoteCmd, { connectTimeout: 15, onStdin: scriptContent });
     }
   } catch (e) {
     await updateRec(scriptId, effectiveVps, runId, {
       finishedAt: nowIso(),
       exitCode: 127,
-      output: `Failed to start: ${String(e.message || e)}`,
     });
+    try { atomicWrite(logFile, `Failed to start: ${String(e.message || e)}\n`, { mode: 0o600 }); } catch {}
     fs.rmSync(tmpScript, { force: true });
     return { record: readRuns(scriptId, effectiveVps).find((r) => r.id === runId) };
   }
@@ -152,22 +185,25 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
     vpsId: effectiveVps,
     runId,
     tmpScript,
-    remoteTmp,
+    logFile,
+    remoteBase,
     buffer: '',
     persistTimer: null,
     done: false,
   };
   active.set(runId, state);
 
-  const persist = () => updateRec(scriptId, effectiveVps, runId, { output: state.buffer });
+  const persistLog = () => {
+    try { atomicWrite(state.logFile, state.buffer, { mode: 0o600 }); } catch {}
+  };
 
   const onData = (chunk) => {
     const text = chunk.toString('utf8').replace(/\r/g, '\n');
     state.buffer = capTail(state.buffer + text);
     if (!state.persistTimer) {
-      state.persistTimer = setTimeout(async () => {
+      state.persistTimer = setTimeout(() => {
         state.persistTimer = null;
-        if (!state.done) await persist();
+        if (!state.done) persistLog();
       }, PERSIST_INTERVAL_MS);
     }
   };
@@ -186,9 +222,10 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
       output = output.replace(/__RW_EXIT:-?\d+/, `[exit ${exitCode}]`);
     }
     if (exitCode === null || Number.isNaN(exitCode)) exitCode = code ?? -1;
-    if (exitCode === 143) output += '\n[stopped by user]';
+    if (exitCode === 143 || exitCode === -1) output += '\n[stopped by user]';
     active.delete(runId);
-    await updateRec(scriptId, effectiveVps, runId, { output: capTail(output), finishedAt: nowIso(), exitCode });
+    try { atomicWrite(state.logFile, capTail(output), { mode: 0o600 }); } catch {}
+    await updateRec(scriptId, effectiveVps, runId, { finishedAt: nowIso(), exitCode, bytes: Buffer.byteLength(output) });
     fs.rmSync(tmpScript, { force: true });
     if (effectiveVps) await fleet.touchSeen(effectiveVps).catch(() => {});
   };
@@ -197,26 +234,29 @@ export async function startRun(scriptId, { dryRun = false, vpsId = null } = {}) 
   child.on('error', () => {
     finish(127);
   });
-  child.on('close', (code, signal) => finish(signal === 'SIGTERM' ? 143 : code));
+  // Any fatal signal (TERM, KILL, …) is recorded as user-stopped, not exit -1.
+  child.on('close', (code, signal) => finish(signal ? 143 : code));
 
   // Fail-safe: if the child never exits, still allow reap on server restart.
   return { record: rec };
 }
 
-/** Stop a run: SIGTERM the process group, escalate to SIGKILL. */
+/** Stop a run: SIGTERM the local process group / the remote run's group, escalate to SIGKILL. */
 export async function stopRun(runId) {
   const state = active.get(runId);
   if (!state) return false;
-  const { child, vpsId, remoteTmp } = state;
+  const { child, vpsId, remoteBase } = state;
 
-  if (vpsId && remoteTmp) {
-    // Kill only this run's remote process — for persistent ~/backup.sh, match backup.sh
+  if (vpsId && remoteBase) {
+    // Scoped to this run only: its process group via the pidfile, plus its
+    // uniquely-named script path. Never a blanket `pkill -f rclone`.
     const vps = fleet.readDecrypted(vpsId);
     if (vps) {
-      const { runSsh } = await import('./ssh.js');
-      const pattern = remoteTmp === '~/backup.sh' ? 'backup.sh' : remoteTmp;
-      const quoted = pattern.replace(/'/g, `'\\''`);
-      runSsh(vps, `pkill -f -- '${quoted}' >/dev/null 2>&1; pkill -TERM -f rclone >/dev/null 2>&1; true`, { timeoutMs: 10000 }).catch(() => {});
+      const remoteCmd =
+        `pkill -TERM -f "rw-${runId}" 2>/dev/null; ` +
+        `pid=$(cat ${remoteBase}.pid 2>/dev/null); ` +
+        `if [ -n "$pid" ]; then kill -TERM -- -$pid 2>/dev/null; kill -TERM $pid 2>/dev/null; fi; true`;
+      runSsh(vps, remoteCmd, { timeoutMs: 10000 }).catch(() => {});
     }
   }
 
@@ -249,35 +289,68 @@ export function isActive(runId) {
 }
 
 /**
- * Boot-time reaping: any run recorded as unfinished but not owned by this
- * process was orphaned by a previous server instance (or a crash).
+ * Boot-time: split legacy inline `output` fields out of shard JSON files into
+ * per-run log files, and reap runs orphaned by a previous server instance.
  */
-export async function reapStaleRuns() {
+export async function migrateAndReap() {
   const reaped = [];
   for (const f of fs.readdirSync(RUNS_DIR)) {
     if (!f.endsWith('.json')) continue;
     const full = path.join(RUNS_DIR, f);
     const runs = readJson(full);
     if (!Array.isArray(runs)) continue;
+
+    let migrated = false;
+    for (const r of runs) {
+      if (typeof r.output === 'string' && r.output) {
+        try {
+          const lf = logFileFor(r.scriptId ?? f.replace(/\.json$/, '').split('__')[0], r.vpsId, r.id);
+          if (!fs.existsSync(lf)) atomicWrite(lf, r.output, { mode: 0o600 });
+        } catch {}
+        delete r.output;
+        migrated = true;
+      }
+    }
+
     const stale = runs.filter((r) => !r.finishedAt && !active.has(r.id));
-    if (!stale.length) continue;
-    await withLock(full, () => {
-      const fresh = readJson(full) ?? [];
-      for (const r of fresh) {
-        if (r.finishedAt || active.has(r.id)) continue;
-        if (!stale.some((s) => s.id === r.id)) continue;
+    if (stale.length) {
+      for (const r of stale) {
         r.finishedAt = nowIso();
         r.exitCode = -1;
-        r.output = (r.output ?? '') + '\n[server restarted — run was interrupted]';
         reaped.push(r.id);
+        try {
+          const lf = logFileFor(r.scriptId ?? f.replace(/\.json$/, '').split('__')[0], r.vpsId, r.id);
+          fs.appendFileSync(lf, '\n[server restarted — run was interrupted]\n');
+        } catch {}
       }
-      atomicWrite(full, JSON.stringify(fresh.slice(0, MAX_RUNS), null, 2));
-    });
+      migrated = true;
+    }
+
+    if (migrated) {
+      await withLock(full, () => {
+        const fresh = readJson(full) ?? [];
+        for (const r of fresh) {
+          const mine = stale.find((s) => s.id === r.id);
+          if (mine) {
+            r.finishedAt = mine.finishedAt;
+            r.exitCode = mine.exitCode;
+          }
+          if (typeof r.output === 'string') {
+            try {
+              const lf = logFileFor(r.scriptId ?? f.replace(/\.json$/, '').split('__')[0], r.vpsId, r.id);
+              if (!fs.existsSync(lf) && r.output) atomicWrite(lf, r.output, { mode: 0o600 });
+            } catch {}
+            delete r.output;
+          }
+        }
+        atomicWrite(full, JSON.stringify(fresh.slice(0, MAX_RUNS), null, 2));
+      });
+    }
   }
   return reaped;
 }
 
-/** Delete one finished run record (409 if still running). */
+/** Delete one finished run record and its log file (409 if still running). */
 export async function deleteRun(scriptId, runId) {
   for (const f of fs.readdirSync(RUNS_DIR)) {
     if (!f.endsWith('.json')) continue;
@@ -287,26 +360,53 @@ export async function deleteRun(scriptId, runId) {
     const target = runs.find((r) => r.id === runId);
     if (!target) continue;
     if (!target.finishedAt && active.has(runId)) return { code: 409 };
+    const logFile = logFileFor(scriptId, target.vpsId, runId);
     await withLock(full, () => {
       const fresh = (readJson(full) ?? []).filter((r) => r.id !== runId);
       if (fresh.length) atomicWrite(full, JSON.stringify(fresh, null, 2));
       else fs.rmSync(full, { force: true });
     });
+    fs.rmSync(logFile, { force: true });
     return { code: 200 };
   }
   return { code: 404 };
 }
 
-/** Delete all run logs for a script (stops nothing — caller must not have active runs). */
+function rmScriptLogs(scriptId, vpsId) {
+  const prefix = `${scriptId}__${vpsKey(vpsId)}__`;
+  for (const f of fs.readdirSync(LOGS_DIR)) {
+    if (f.startsWith(prefix) && f.endsWith('.log')) fs.rmSync(path.join(LOGS_DIR, f), { force: true });
+  }
+}
+
+/** Delete every run of one script (409 if any run is still active). */
 export async function deleteAllRuns(scriptId) {
   if (!isSafeId(scriptId)) return;
-  for (const r of listAllRuns(scriptId)) {
-    if (active.has(r.id)) return { code: 409 };
-  }
+  const shards = [`${scriptId}.json`];
   for (const f of fs.readdirSync(RUNS_DIR)) {
-    if (!f.endsWith('.json')) continue;
-    if (f !== `${scriptId}.json` && !f.startsWith(`${scriptId}__`)) continue;
-    fs.rmSync(path.join(RUNS_DIR, f), { force: true });
+    if (f.startsWith(`${scriptId}__`) && f.endsWith('.json')) shards.push(f);
   }
+  const victims = [];
+  for (const f of shards) {
+    const full = path.join(RUNS_DIR, f);
+    const runs = readJson(full);
+    if (!Array.isArray(runs)) continue;
+    if (runs.some((r) => !r.finishedAt && active.has(r.id))) return { code: 409 };
+    victims.push({ full, vpsId: f === `${scriptId}.json` ? null : f.slice(scriptId.length + 2, -5) });
+  }
+  for (const v of victims) {
+    await withLock(v.full, () => fs.rmSync(v.full, { force: true }));
+    rmScriptLogs(scriptId, v.vpsId);
+  }
+  return { code: 200 };
+}
+
+/** Delete the per-VPS shard (409 while a run on that VPS is active). */
+export async function deleteRunsForVps(scriptId, vpsId) {
+  const full = shardFile(scriptId, vpsId);
+  const runs = readJson(full) ?? [];
+  if (runs.some((r) => !r.finishedAt && active.has(r.id))) return { code: 409 };
+  await withLock(full, () => fs.rmSync(full, { force: true }));
+  rmScriptLogs(scriptId, vpsId);
   return { code: 200 };
 }

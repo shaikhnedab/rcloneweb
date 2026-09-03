@@ -5,7 +5,7 @@ Beautiful rclone backup panel — rebuilt from scratch in **Node.js 22 + Express
 > **This is a complete rewrite** of the PHP version. All original features are preserved, every reported bug is fixed, and modern security defaults are applied. The PHP source is kept untouched in [`legacy/`](legacy/) for reference.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.6-00E5CC?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/version-2.1.0-00E5CC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Node-22-339933?style=for-the-badge&logo=node.js" />
   <img src="https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" />
@@ -24,7 +24,10 @@ Build, store, schedule and run **rclone** backup scripts from a modern UI — wi
 | **▶ Run & Logs** | Live streaming output, compact view, real progress from rclone stats, stop, download, 25-run history |
 | **⏰ Schedule** | In-panel cron builder (Every N min / hourly / daily / weekly / monthly / custom), timezone-aware, in-process scheduler + `cron` CLI |
 | **🔐 Auth** | First-run setup, stateless HMAC session (30d, `HttpOnly` `SameSite=Lax`), `scrypt` hashing, rate-limited login, **account reset without data loss** |
-| **🎨 Theme** | Dark / light, Material 3, responsive, accessible |
+| **🎨 Theme** | Dark-first "Fleet Pipeline" design, light theme, responsive, keyboard-accessible |
+| **🏠 Dashboard** | Every script's last run + next schedules, fleet/destination health, one-click run |
+| **📜 Editor** | CodeMirror bash editor with syntax highlighting, script search + duplicate |
+| **💾 Export/Import** | One-file config bundle; secrets re-encrypted under your passphrase |
 
 ## 🚀 Quick start
 
@@ -247,7 +250,11 @@ sudo certbot renew --dry-run  # test auto-renew
 - Secrets via **env vars** for rclone, obscure via stdin (never argv)
 - Predictable `/tmp` paths replaced with randomized names
 - Login **rate limiting** (10/5min per IP)
-- CSRF: `SameSite=Lax` + `Origin` check on mutations
+- CSRF: `SameSite=Lax` + `Origin` check + required `X-Requested-With` header on mutations (curl/automation must send it)
+- Mutating API routes rate-limited where relevant; secret-bearing responses sent `Cache-Control: no-store`
+- Destination secrets never duplicated into script storage; un-embedded secrets stripped from disk
+- Data-dir browse guard resolves symlinks (`realpathSync`) — cannot be bypassed via links into `data/`
+- Remote run stop is scoped to the run's own process group (no blanket `pkill -f rclone`)
 - `data/` blocked from web access, `auth.json` 0600
 - Fleet/dest GETs strip ciphertext, XSS via `innerHTML` eliminated (React escapes)
 

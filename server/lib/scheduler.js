@@ -5,6 +5,14 @@ import { nowIso } from './jsonfile.js';
 
 const DEBOUNCE_MS = 90 * 1000;
 
+// scheduleId -> cron-minute bucket last attempted. Prevents retrying a failed
+// or already_running trigger on every 30s tick within the same cron minute.
+const attempted = new Map();
+
+function minuteBucket(local) {
+  return Math.floor(local.getTime() / 60000);
+}
+
 /**
  * Check every schedule; start runs for due ones. Called by the in-process
  * timer, the manual trigger endpoint, and `node server/cli.js cron`.
@@ -17,14 +25,18 @@ export async function triggerDueSchedules() {
     const tz = s.timezone && isValidTz(s.timezone) ? s.timezone : 'UTC';
     const local = getDateInTz(new Date(), tz);
     if (!cronMatches(s.cronExpr, local)) continue;
+    const bucket = `${s.id}:${minuteBucket(local)}`;
+    if (attempted.get(s.id) === bucket) continue;
     const last = s.lastRun ? Date.parse(s.lastRun) : 0;
     if (last && Date.now() - last < DEBOUNCE_MS) continue;
+    attempted.set(s.id, bucket);
     const vpsId = s.vpsId && s.vpsId !== 'local' ? s.vpsId : null;
     let started = null;
     try {
       const res = await startRun(s.scriptId, { dryRun: false, vpsId });
       started = res.record ?? null;
-    } catch {
+    } catch (e) {
+      console.error(`[scheduler] start failed for schedule ${s.id} (script ${s.scriptId}):`, e?.message || e);
       started = null;
     }
     if (started) {
@@ -32,6 +44,8 @@ export async function triggerDueSchedules() {
       triggered.push(started);
     }
   }
+  // keep the attempt map from growing without bound
+  if (attempted.size > 1000) attempted.clear();
   return triggered;
 }
 

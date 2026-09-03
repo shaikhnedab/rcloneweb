@@ -114,6 +114,14 @@ export function resetCredentials(username, password) {
   return doc;
 }
 
+/** Invalidate every issued session (pwVersion bump) without changing credentials. */
+export function revokeSessions() {
+  const a = readAuth();
+  if (!a) throw new AuthError('No account exists', 404);
+  writeAuth({ ...a, pwVersion: (a.pwVersion ?? 1) + 1 });
+  return { username: a.username, pwVersion: (a.pwVersion ?? 1) + 1 };
+}
+
 // Dummy hash so unknown usernames cost the same scrypt time as real ones.
 const DUMMY_HASH = hashPassword('timing-equalizer');
 
@@ -178,13 +186,32 @@ export class AuthError extends Error {
   }
 }
 
-// ---- login rate limiting (per IP, in-memory) ----
+// ---- login rate limiting (per IP, in-memory, swept + capped) ----
 const attempts = new Map(); // ip -> { count, resetAt }
 const WINDOW_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
+const MAX_TRACKED_IPS = 10_000;
+
+/** Drop expired entries; if still over cap, drop the soonest-expiring. */
+function sweep(now) {
+  if (attempts.size < MAX_TRACKED_IPS) return;
+  for (const [ip, rec] of attempts) {
+    if (now > rec.resetAt) attempts.delete(ip);
+  }
+  while (attempts.size >= MAX_TRACKED_IPS) {
+    let oldestIp = null;
+    let oldestAt = Infinity;
+    for (const [ip, rec] of attempts) {
+      if (rec.resetAt < oldestAt) { oldestAt = rec.resetAt; oldestIp = ip; }
+    }
+    if (!oldestIp) break;
+    attempts.delete(oldestIp);
+  }
+}
 
 export function rateLimitCheck(ip) {
   const now = Date.now();
+  sweep(now);
   const rec = attempts.get(ip);
   if (!rec || now > rec.resetAt) return true;
   return rec.count < MAX_ATTEMPTS;

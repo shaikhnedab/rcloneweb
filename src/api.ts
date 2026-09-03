@@ -1,8 +1,10 @@
 // Simple typed fetch wrapper used by all components.
+// `X-Requested-With` doubles as the server's CSRF marker: cross-site requests
+// cannot set custom headers on simple form submissions.
 export async function api(path: string, opts: RequestInit = {}) {
   const res = await fetch(path, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...(opts.headers || {}) },
     ...opts,
   });
   const text = await res.text();

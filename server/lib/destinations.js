@@ -120,6 +120,7 @@ export async function create(input) {
 export async function update(id, input) {
   const doc = read(id);
   if (!doc) return null;
+  if (input.type !== undefined && !TYPES.includes(input.type)) throw new ValidationError('Invalid type');
   if (input.host !== undefined) {
     const host = String(input.host).trim();
     if (host && !HOST_RE.test(host)) throw new ValidationError('Invalid host');
@@ -127,6 +128,10 @@ export async function update(id, input) {
   if (input.user !== undefined) {
     const user = String(input.user).trim();
     if (user && !USER_RE.test(user)) throw new ValidationError('Invalid user');
+  }
+  if (input.port !== undefined) {
+    const port = String(input.port).trim();
+    if (port && (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) throw new ValidationError('Invalid port');
   }
   for (const k of ['name', 'type', 'host', 'port', 'user', 'remoteName', 'remotePath', 'sftpAuth', 'keyPath', 's3Provider', 's3Bucket', 's3Region', 's3Endpoint']) {
     if (input[k] !== undefined) doc[k] = String(input[k]).trim();
@@ -155,4 +160,41 @@ export async function touchSeen(id) {
   await withLock(fileFor(id), () => {
     atomicWrite(fileFor(id), JSON.stringify(doc, null, 2));
   });
+}
+
+const shqEscape = (s) => `'${String(s ?? '').replace(/'/g, `'\\''`)}'`;
+
+/**
+ * Make a stored script self-contained for deployment (runs + /raw download).
+ * - Replaces generator placeholders with the destination's stored secrets
+ *   (embed mode with no secret typed in the builder).
+ * - If the script would prompt interactively for a password/keys — which can
+ *   never work in a panel-launched run (no TTY) — prepend exports from the
+ *   destination store instead.
+ * Operates on the in-memory script text only; nothing is persisted.
+ */
+export function injectSecrets(script, destId) {
+  if (typeof script !== 'string' || !script || !destId || !isSafeId(destId)) return script;
+  const d = readDecrypted(destId);
+  if (!d) return script;
+  let out = script;
+  if (out.includes(`'__RW_DEST_PASSWORD__'`)) {
+    out = out.split(`'__RW_DEST_PASSWORD__'`).join(d.password ? shqEscape(d.password) : `"$FTP_PASS"`);
+  }
+  if (out.includes(`'__RW_S3_ACCESS_KEY__'`)) {
+    out = out.split(`'__RW_S3_ACCESS_KEY__'`).join(d.s3AccessKey ? shqEscape(d.s3AccessKey) : `"$AWS_ACCESS_KEY_ID"`);
+  }
+  if (out.includes(`'__RW_S3_SECRET_KEY__'`)) {
+    out = out.split(`'__RW_S3_SECRET_KEY__'`).join(d.s3SecretKey ? shqEscape(d.s3SecretKey) : `"$AWS_SECRET_ACCESS_KEY"`);
+  }
+  const pre = [];
+  if (/read -rsp "Enter (FTP|SFTP) password/.test(out) && d.password && !out.includes('FTP_PASS=')) {
+    pre.push(`export FTP_PASS=${shqEscape(d.password)}`);
+  }
+  if (/AWS_ACCESS_KEY_ID/.test(out) && d.s3AccessKey && d.s3SecretKey && !out.includes('AWS_ACCESS_KEY_ID=')) {
+    pre.push(`export AWS_ACCESS_KEY_ID=${shqEscape(d.s3AccessKey)}`);
+    pre.push(`export AWS_SECRET_ACCESS_KEY=${shqEscape(d.s3SecretKey)}`);
+  }
+  if (pre.length) out = `${pre.join('\n')}\n\n${out}`;
+  return out;
 }

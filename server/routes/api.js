@@ -1,4 +1,7 @@
 import express from 'express';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as auth from '../lib/auth.js';
 import * as store from '../lib/store.js';
 import * as fleet from '../lib/fleet.js';
@@ -9,7 +12,8 @@ import * as connTest from '../lib/connection-test.js';
 import * as webhook from '../lib/webhook.js';
 import * as schedules from '../lib/schedules.js';
 import * as scheduler from '../lib/scheduler.js';
-import { isSafeId } from '../lib/paths.js';
+import * as backup from '../lib/backup.js';
+import { SCRIPTS_DIR, safeJoin, isSafeId } from '../lib/paths.js';
 import { cronError } from '../lib/cron.js';
 
 const router = express.Router();
@@ -21,20 +25,39 @@ function parseCookies(req) {
     const eq = part.indexOf('=');
     if (eq === -1) continue;
     const k = part.slice(0, eq).trim();
-    const v = decodeURIComponent(part.slice(eq + 1).trim());
-    if (k) out[k] = v;
+    if (!k) continue;
+    const raw = part.slice(eq + 1).trim();
+    // A malformed cookie (e.g. "%") must never 500 the whole API.
+    try {
+      out[k] = decodeURIComponent(raw);
+    } catch {
+      out[k] = raw;
+    }
   }
   return out;
 }
 function isSecureRequest(req) {
   const proto = req.headers['x-forwarded-proto'];
-  if (proto === 'https') return true;
+  if (typeof proto === 'string' && proto.split(',').some((p) => p.trim() === 'https')) return true;
   if (req.secure) return true;
-  // direct https check via forwarded header from nginx
   return false;
 }
 function secureSuffix(req) {
   return isSecureRequest(req) ? '; Secure' : '';
+}
+function sessionCookie(req, sess, maxAge = 30 * 24 * 3600) {
+  return `rw_session=${encodeURIComponent(sess)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureSuffix(req)}`;
+}
+/** Constant-time comparison for raw tokens (never short-circuit on length). */
+function tokenOk(provided, expected) {
+  if (!expected || typeof provided !== 'string') return false;
+  const a = crypto.createHash('sha256').update(provided).digest();
+  const b = crypto.createHash('sha256').update(String(expected)).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+function noStore(res) {
+  res.set('Cache-Control', 'no-store');
+  return res;
 }
 function requireAuth(req, res, next) {
   const cookies = parseCookies(req);
@@ -48,11 +71,15 @@ router.get('/api/auth/status', (req, res) => {
   const doc = auth.getAccount();
   const authed = auth.validSession(cookies.rw_session);
   const user = authed ? auth.sessionUser(cookies.rw_session) : null;
-  res.json({ setupNeeded: !doc, authenticated: authed, username: user });
+  noStore(res).json({ setupNeeded: !doc, authenticated: authed, username: user });
 });
 
 router.post('/api/auth/setup', express.json({ limit: '20kb' }), (req, res) => {
   if (auth.getAccount()) return res.status(409).json({ error: 'Setup already completed' });
+  // Rate-limit setup like login: two racing first requests must not both pass.
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (!auth.rateLimitCheck(ip)) return res.status(429).json({ error: 'Too many attempts, try again later' });
+  auth.rateLimitRecord(ip);
   const { username = '', password = '' } = req.body ?? {};
   const u = String(username).trim();
   if (!u || typeof password !== 'string' || password.length < 6) {
@@ -60,12 +87,14 @@ router.post('/api/auth/setup', express.json({ limit: '20kb' }), (req, res) => {
   }
   const uname = u.slice(0, 40);
   try {
+    if (auth.getAccount()) return res.status(409).json({ error: 'Setup already completed' });
     auth.createAccount(uname, String(password));
   } catch (e) {
     return res.status(e.status || 400).json({ error: e.message });
   }
+  auth.rateLimitClear(ip);
   const sess = auth.makeSession(uname);
-  res.setHeader('Set-Cookie', `rw_session=${encodeURIComponent(sess)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${secureSuffix(req)}`);
+  res.setHeader('Set-Cookie', sessionCookie(req, sess));
   res.json({ ok: true });
 });
 
@@ -79,19 +108,32 @@ router.post('/api/auth/login', express.json({ limit: '20kb' }), (req, res) => {
   }
   auth.rateLimitClear(ip);
   const sess = auth.makeSession(String(username));
-  res.setHeader('Set-Cookie', `rw_session=${encodeURIComponent(sess)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${secureSuffix(req)}`);
+  res.setHeader('Set-Cookie', sessionCookie(req, sess));
   res.json({ ok: true });
 });
 
 router.post('/api/auth/logout', (req, res) => {
-  res.setHeader('Set-Cookie', `rw_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureSuffix(req)}`);
+  res.setHeader('Set-Cookie', sessionCookie(req, '', 0));
   res.json({ ok: true });
+});
+
+// Invalidate every issued session (e.g. a suspected cookie leak) and issue a
+// fresh one for the caller so they stay signed in.
+router.post('/api/auth/revoke-sessions', requireAuth, express.json({ limit: '1kb' }), (req, res) => {
+  try {
+    const out = auth.revokeSessions();
+    const sess = auth.makeSession(out.username);
+    res.setHeader('Set-Cookie', sessionCookie(req, sess));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
+  }
 });
 
 // ---- account (requires auth) ----
 router.get('/api/account', requireAuth, (req, res) => {
   const acc = auth.getAccount();
-  res.json({ username: acc.username, createdAt: acc.createdAt });
+  noStore(res).json({ username: acc.username, createdAt: acc.createdAt });
 });
 
 router.post('/api/account', requireAuth, express.json({ limit: '20kb' }), (req, res) => {
@@ -104,7 +146,7 @@ router.post('/api/account', requireAuth, express.json({ limit: '20kb' }), (req, 
     const newUser = out.username;
     if (newUser !== currentUser) {
       const sess = auth.makeSession(newUser);
-      res.setHeader('Set-Cookie', `rw_session=${encodeURIComponent(sess)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${secureSuffix(req)}`);
+      res.setHeader('Set-Cookie', sessionCookie(req, sess));
     }
     res.json({ ok: true, username: out.username });
   } catch (e) {
@@ -113,26 +155,21 @@ router.post('/api/account', requireAuth, express.json({ limit: '20kb' }), (req, 
 });
 
 // ---- raw token endpoints (no session required) ----
-router.get(/^\/raw\/([^/]+?)(?:\.sh)?$/, async (req, res) => {
-  const m = req.path.match(/^\/raw\/([^/]+?)(?:\.sh)?$/);
-  let id = m ? m[1].replace(/\.sh$/i, '') : '';
+function rawHandler(req, res) {
+  const m = req.path.match(/^\/(?:raw|i)\/([^/]+?)(?:\.sh)?$/);
+  const id = m ? m[1].replace(/\.sh$/i, '') : '';
   if (!isSafeId(id)) return res.status(400).type('text/plain').send('# bad id\n');
   const doc = store.read(id);
   if (!doc || !doc.script) return res.status(404).type('text/plain').send('# script not found\n');
   const token = String(req.query.token ?? '');
-  if (!doc.rawToken || token !== doc.rawToken) return res.status(401).type('text/plain').send('# unauthorized: append ?token=<token> (see panel → Install)\n');
-  res.type('text/x-shellscript; charset=utf-8').set('Cache-Control', 'no-store').send(doc.script);
-});
-router.get(/^\/i\/([^/]+?)(?:\.sh)?$/, async (req, res) => {
-  const m = req.path.match(/^\/i\/([^/]+?)(?:\.sh)?$/);
-  let id = m ? m[1].replace(/\.sh$/i, '') : '';
-  if (!isSafeId(id)) return res.status(400).type('text/plain').send('# bad id\n');
-  const doc = store.read(id);
-  if (!doc || !doc.script) return res.status(404).type('text/plain').send('# script not found\n');
-  const token = String(req.query.token ?? '');
-  if (!doc.rawToken || token !== doc.rawToken) return res.status(401).type('text/plain').send('# unauthorized: append ?token=<token> (see panel → Install)\n');
-  res.type('text/x-shellscript; charset=utf-8').set('Cache-Control', 'no-store').send(doc.script);
-});
+  if (!tokenOk(token, doc.rawToken)) return res.status(401).type('text/plain').send('# unauthorized: append ?token=<token> (see panel → Install)\n');
+  // Deployed copies must be self-contained: inject stored destination
+  // credentials (the panel copy never holds them).
+  const script = destinations.injectSecrets(doc.script, doc.destFleetId);
+  res.type('text/x-shellscript; charset=utf-8').set('Cache-Control', 'no-store').send(script);
+}
+router.get(/^\/raw\/([^/]+?)(?:\.sh)?$/, rawHandler);
+router.get(/^\/i\/([^/]+?)(?:\.sh)?$/, rawHandler);
 
 // ---- auth gate for remaining /api/* ----
 router.use('/api', (req, res, next) => {
@@ -140,8 +177,13 @@ router.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   const cookies = parseCookies(req);
   if (!auth.validSession(cookies.rw_session)) return res.status(401).json({ error: 'Not logged in' });
-  // CSRF: state-changing requests must have valid Origin or be same-site
+  // CSRF: state-changing requests must come from our own frontend. Browsers
+  // always attach Origin; the custom header closes the no-Origin gap (a
+  // cross-site attacker cannot set a custom header on a simple form request).
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    if (String(req.headers['x-requested-with'] || '').toLowerCase() !== 'xmlhttprequest') {
+      return res.status(403).json({ error: 'CSRF check failed' });
+    }
     const origin = req.headers.origin;
     if (origin) {
       try {
@@ -344,6 +386,23 @@ router.post('/api/browse/mkdir-local', express.json({ limit: '20kb' }), async (r
 router.get('/api/scripts', (req, res) => {
   res.json(store.list());
 });
+
+/**
+ * Secrets are only kept in the stored doc when the user explicitly chose to
+ * embed them in the generated script (embed=true). Un-embedded secrets are
+ * stripped before write so they never sit on disk next to the encrypted
+ * destination credentials.
+ */
+function sanitizeSecrets(doc) {
+  const s = doc?.config?.secrets;
+  if (s && !s.embed) {
+    delete s.password;
+    delete s.s3AccessKey;
+    delete s.s3SecretKey;
+  }
+  return doc;
+}
+
 router.post('/api/scripts', express.json({ limit: '200kb' }), async (req, res) => {
   const b = req.body ?? {};
   const name = String(b.name ?? 'untitled').trim() || 'untitled';
@@ -352,11 +411,12 @@ router.post('/api/scripts', express.json({ limit: '200kb' }), async (req, res) =
   b.name = name;
   b.createdAt = new Date().toISOString();
   b.updatedAt = null;
+  delete b.rawToken; // always server-generated — a client-supplied token is ignored
   if (b.destFleetId) {
     const d = destinations.readDecrypted(b.destFleetId);
     if (d) enrichFromDest(b, d);
   }
-  const doc = await store.write(b);
+  const doc = await store.write(sanitizeSecrets(b));
   res.status(201).json(doc);
 });
 router.get('/api/scripts/:id', (req, res) => {
@@ -364,7 +424,7 @@ router.get('/api/scripts/:id', (req, res) => {
   if (!isSafeId(id)) return res.status(400).json({ error: 'bad id' });
   const doc = store.read(id);
   if (!doc) return res.status(404).json({ error: 'not found' });
-  res.json(doc);
+  noStore(res).json(doc);
 });
 router.put('/api/scripts/:id', express.json({ limit: '200kb' }), async (req, res) => {
   const id = req.params.id;
@@ -375,12 +435,9 @@ router.put('/api/scripts/:id', express.json({ limit: '200kb' }), async (req, res
   const doc = { ...ex, ...b, id: ex.id, createdAt: ex.createdAt, rawToken: ex.rawToken };
   if (doc.destFleetId) {
     const d = destinations.readDecrypted(doc.destFleetId);
-    if (d) {
-      enrichFromDest(doc, d);
-      if (!doc.manualEdited) doc.manualEdited = false;
-    }
+    if (d) enrichFromDest(doc, d);
   }
-  await store.write(doc);
+  await store.write(sanitizeSecrets(doc));
   res.json(doc);
 });
 router.delete('/api/scripts/:id', async (req, res) => {
@@ -389,35 +446,39 @@ router.delete('/api/scripts/:id', async (req, res) => {
   const doc = store.read(id);
   if (!doc) return res.status(404).json({ error: 'not found' });
   // delete script file
-  const { SCRIPTS_DIR } = await import('../lib/paths.js');
-  const fs = await import('node:fs');
-  const path = await import('node:path');
-  try { fs.unlinkSync(path.join(SCRIPTS_DIR, `${id}.json`)); } catch {}
+  try { fs.unlinkSync(path.join(SCRIPTS_DIR, `${id}.json`)); } catch (e) {
+    console.error(`[scripts] failed to delete ${id}:`, e.message);
+  }
   // cascade: runs, schedules
-  await runs.deleteAllRuns(id).catch(() => {});
-  await schedules.removeSchedulesForScript(id).catch(() => {});
+  await runs.deleteAllRuns(id).catch((e) => console.error(`[scripts] cascade runs ${id}:`, e.message));
+  await schedules.removeSchedulesForScript(id).catch((e) => console.error(`[scripts] cascade schedules ${id}:`, e.message));
   res.status(204).end();
 });
 
+/**
+ * Sync non-secret destination fields into the script's builder config.
+ * Secrets are deliberately NOT copied here: the generated script embeds them
+ * client-side only when config.secrets.embed is set, and persisting a second
+ * plaintext copy (or force-enabling embed) undermined destination encryption.
+ */
 function enrichFromDest(b, d) {
   b.config = b.config ?? {};
-  b.config.dest = b.config.dest ?? {};
-  b.config.secrets = b.config.secrets ?? {};
-  b.config.dest.type = d.type ?? b.config.dest.type ?? 'sftp';
-  b.config.dest.host = d.host ?? '';
-  b.config.dest.port = d.port ?? '';
-  b.config.dest.user = d.user ?? '';
-  b.config.dest.remoteName = d.remoteName ?? b.config.dest.remoteName ?? 'my-backup-remote';
-  b.config.dest.remotePath = d.remotePath ?? '/';
-  b.config.dest.sftpAuth = d.sftpAuth ?? 'password';
-  b.config.dest.keyPath = d.keyPath ?? '';
-  b.config.dest.s3Provider = d.s3Provider ?? 'AWS';
-  b.config.dest.s3Bucket = d.s3Bucket ?? '';
-  b.config.dest.s3Region = d.s3Region ?? '';
-  b.config.dest.s3Endpoint = d.s3Endpoint ?? '';
-  if (d.password) { b.config.secrets.password = d.password; b.config.secrets.embed = true; }
-  if (d.s3AccessKey) b.config.secrets.s3AccessKey = d.s3AccessKey;
-  if (d.s3SecretKey) { b.config.secrets.s3SecretKey = d.s3SecretKey; b.config.secrets.embed = true; }
+  b.config.dest = {
+    ...(b.config.dest ?? {}),
+    type: d.type ?? 'sftp',
+    host: d.host ?? '',
+    port: d.port ?? '',
+    user: d.user ?? '',
+    remoteName: d.remoteName ?? b.config.dest?.remoteName ?? 'my-backup-remote',
+    remotePath: d.remotePath ?? '/',
+    sftpAuth: d.sftpAuth ?? 'password',
+    keyPath: d.keyPath ?? '',
+    s3Provider: d.s3Provider ?? 'AWS',
+    s3Bucket: d.s3Bucket ?? '',
+    s3Region: d.s3Region ?? '',
+    s3Endpoint: d.s3Endpoint ?? '',
+  };
+  if (!b.config.secrets) b.config.secrets = { embed: false, password: '', s3AccessKey: '', s3SecretKey: '' };
 }
 
 // ---- runs ----
@@ -433,11 +494,8 @@ router.delete('/api/scripts/:id/runs', async (req, res) => {
   if (!isSafeId(id)) return res.status(400).json({ error: 'bad id' });
   const vpsId = req.query.vpsId ? String(req.query.vpsId) : null;
   if (vpsId) {
-    // delete shard for that vps
-    const fs = await import('node:fs');
-    const { RUNS_DIR, safeJoin } = await import('../lib/paths.js');
-    const f = safeJoin(RUNS_DIR, vpsId === 'local' ? `${id}.json` : `${id}__${vpsId}.json`);
-    if (f) try { fs.unlinkSync(f); } catch {}
+    const out = await runs.deleteRunsForVps(id, vpsId);
+    if (out.code === 409) return res.status(409).json({ error: 'Cannot delete while a run is active on this VPS' });
     return res.json({ ok: true });
   }
   const out = await runs.deleteAllRuns(id);
@@ -458,10 +516,77 @@ router.get('/api/scripts/:id/runs/:runId/log', (req, res) => {
   const id = req.params.id;
   const runId = req.params.runId;
   if (!isSafeId(id)) return res.status(400).json({ error: 'bad id' });
-  const list = runs.listAllRuns(id);
-  const r = list.find((x) => x.id === runId);
-  if (!r) return res.status(404).json({ error: 'run not found' });
-  res.type('text/plain; charset=utf-8').set('Content-Disposition', `attachment; filename="run-${runId}.log"`).send(r.output ?? '');
+  if (!/^[a-z0-9]{6,64}$/i.test(runId)) return res.status(400).json({ error: 'bad run id' });
+  const text = runs.readLog(id, runId);
+  if (text === null) return res.status(404).json({ error: 'run not found' });
+  res.type('text/plain; charset=utf-8').set('Cache-Control', 'no-store').send(text);
+});
+
+// ---- live log stream (SSE) ----
+router.get('/api/scripts/:id/runs/:runId/events', (req, res) => {
+  const id = req.params.id;
+  const runId = req.params.runId;
+  if (!isSafeId(id)) return res.status(400).json({ error: 'bad id' });
+  if (!/^[a-z0-9]{6,64}$/i.test(runId)) return res.status(400).json({ error: 'bad run id' });
+  const rec = runs.findRun(id, runId);
+  if (!rec) return res.status(404).json({ error: 'run not found' });
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive',
+  });
+  const send = (event, data) => {
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
+
+  let offset = 0;
+  let quietTicks = 0;
+  let closed = false;
+  req.on('close', () => { closed = true; });
+
+  const tick = () => {
+    if (closed) {
+      clearInterval(timer);
+      return;
+    }
+    const cur = runs.findRun(id, runId);
+    if (!cur) {
+      send('end', { missing: true });
+      clearInterval(timer);
+      res.end();
+      return;
+    }
+    try {
+      const logFile = runs.logFileFor(id, cur.vpsId, runId);
+      const size = fs.statSync(logFile).size;
+      if (size < offset) offset = 0; // log was truncated to its tail — resend
+      if (size > offset) {
+        const fd = fs.openSync(logFile, 'r');
+        try {
+          const buf = Buffer.alloc(size - offset);
+          fs.readSync(fd, buf, 0, buf.length, offset);
+          offset = size;
+          send('log', { text: buf.toString('utf8') });
+        } finally {
+          fs.closeSync(fd);
+        }
+        quietTicks = 0;
+      } else {
+        quietTicks += 1;
+      }
+    } catch {
+      quietTicks += 1; // log file not written yet
+    }
+    if (cur.finishedAt && quietTicks >= 2) {
+      send('end', { exitCode: cur.exitCode, finishedAt: cur.finishedAt });
+      clearInterval(timer);
+      res.end();
+    }
+  };
+  const timer = setInterval(tick, 700);
+  timer.unref();
+  tick();
 });
 router.post('/api/scripts/:id/run', express.json({ limit: '20kb' }), async (req, res) => {
   const id = req.params.id;
@@ -490,6 +615,24 @@ router.post('/api/test-webhook', express.json({ limit: '50kb' }), async (req, re
   res.status(out.code).json(out.body);
 });
 
+// ---- config export / import ----
+router.post('/api/export', express.json({ limit: '1kb' }), (req, res) => {
+  try {
+    const bundle = backup.exportBundle(String(req.body?.passphrase ?? ''));
+    noStore(res).json(bundle);
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
+  }
+});
+router.post('/api/import', express.json({ limit: '20mb' }), async (req, res) => {
+  try {
+    const counts = await backup.importBundle(req.body?.bundle ?? req.body, String(req.body?.passphrase ?? ''));
+    res.json({ ok: true, counts });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
+  }
+});
+
 // ---- schedules ----
 router.get('/api/schedules', (req, res) => {
   const scriptId = req.query.scriptId ? String(req.query.scriptId) : null;
@@ -498,6 +641,7 @@ router.get('/api/schedules', (req, res) => {
 router.post('/api/schedules', express.json({ limit: '20kb' }), async (req, res) => {
   const b = req.body ?? {};
   if (!b.scriptId || !b.vpsId || !b.cronExpr) return res.status(400).json({ error: 'scriptId, vpsId, cronExpr required' });
+  if (!isSafeId(String(b.scriptId)) || !isSafeId(String(b.vpsId))) return res.status(400).json({ error: 'bad scriptId or vpsId' });
   const err = cronError(String(b.cronExpr));
   if (err) return res.status(400).json({ error: err });
   let tz = String(b.timezone ?? 'UTC');

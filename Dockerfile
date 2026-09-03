@@ -16,9 +16,12 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
+ && addgroup -S app && adduser -S app -G app \
+ && mkdir -p /app/data && chown -R app:app /app
 # data lives in a volume, not in the image
 VOLUME ["/app/data"]
+USER app
 EXPOSE 8765
 ENV HOST=0.0.0.0 PORT=8765 NODE_ENV=production TZ=Asia/Kolkata
 ENTRYPOINT ["/sbin/tini", "--"]

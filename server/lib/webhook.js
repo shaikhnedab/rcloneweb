@@ -8,6 +8,7 @@ export async function testWebhook({ url, payload }) {
   try {
     const res = await fetch(`${url}?wait=true`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload ?? {}),
       signal: AbortSignal.timeout(12000),

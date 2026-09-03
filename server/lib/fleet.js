@@ -150,8 +150,19 @@ export async function remove(id) {
   for (const s of listSchedules()) {
     if (s.vpsId === id) await removeSchedule(s.id);
   }
-  const runsFiles = fs.readdirSync(path.dirname(RUNS_HINT)).filter((x) => x.includes(`__${id}.json`));
-  for (const x of runsFiles) fs.rmSync(path.join(path.dirname(RUNS_HINT), x), { force: true });
+  // Exact shard suffix (`<script>__<vps>.json`) — substring matching could
+  // over-delete when a script id ends with another VPS's id.
+  const shardRe = new RegExp(`__${id}\\.json$`);
+  const runsDir = path.dirname(RUNS_HINT);
+  for (const x of fs.readdirSync(runsDir)) {
+    if (shardRe.test(x)) fs.rmSync(path.join(runsDir, x), { force: true });
+  }
+  // Remove this VPS's per-run log files (`<script>__<vps>__<runId>.log`).
+  const { LOGS_DIR } = await import('./paths.js');
+  const logRe = new RegExp(`__${id}__[^/]+\\.log$`);
+  for (const x of fs.readdirSync(LOGS_DIR)) {
+    if (logRe.test(x)) fs.rmSync(path.join(LOGS_DIR, x), { force: true });
+  }
   return true;
 }
 

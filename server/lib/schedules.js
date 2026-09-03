@@ -51,7 +51,10 @@ export async function createSchedule(input) {
 export async function updateSchedule(id, input) {
   const doc = getSchedule(id);
   if (!doc) return null;
-  if (input.vpsId !== undefined) doc.vpsId = String(input.vpsId);
+  if (input.vpsId !== undefined) {
+    if (!isSafeId(String(input.vpsId))) throw new Error('Invalid vpsId');
+    doc.vpsId = String(input.vpsId);
+  }
   if (input.cronExpr !== undefined) doc.cronExpr = String(input.cronExpr);
   if (input.enabled !== undefined) doc.enabled = Boolean(input.enabled);
   if (input.timezone !== undefined && isValidTimezone(String(input.timezone))) doc.timezone = String(input.timezone);

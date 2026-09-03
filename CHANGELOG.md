@@ -2,6 +2,41 @@
 
 All notable changes to rcloneweb are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-09-01
+
+The v2 rewrite (2.0.0–2.0.6, Node.js + React) was previously undocumented here — this entry covers 2.1.0, a security, performance and UX hardening release of that rewrite.
+
+### Security
+- **Destination secrets no longer duplicated into script JSON.** `enrichFromDest` copied decrypted destination passwords / S3 keys into the stored script doc (plaintext on disk next to the AES-GCM ciphertext) and force-enabled `embed` even when the user unchecked it. Secrets now live only in the script content when the user explicitly opts in; un-embedded secrets are stripped before write (`server/routes/api.js`).
+- **Symlink-proof data-dir guard.** `browseLocal`/`mkdirVps` resolve symlinks with `realpathSync` (both sides) before the DATA_DIR prefix check, so a symlink pointing into `data/` can no longer expose `auth.json`/`.secret` (`server/lib/browse.js`).
+- **CSRF: require custom header.** All mutating `/api` routes must send `X-Requested-With: XMLHttpRequest` (added by the frontend fetch wrapper) in addition to the Origin check — a cross-site form POST cannot set custom headers.
+- **Timing-safe raw-token comparison** on `/raw` and `/i` (`crypto.timingSafeEqual` over hashed values).
+- **Rate limiter hardened + setup rate-limited.** Per-IP attempt map is swept and capped (memory-DoS fix); `POST /api/auth/setup` is rate-limited and re-checks account existence inside the critical section.
+- **`Cache-Control: no-store`** on responses that carry secrets (`/api/auth/status`, `/api/account`, `/api/scripts/:id`); webhook test fetch uses `redirect: 'error'`.
+- **Scoped remote stop.** Remote runs use per-run script paths (`~/rw-<runId>.sh`) launched under `setsid` with a pidfile; stop kills that run's process group only — never a blanket `pkill -f rclone` that killed unrelated rclone jobs on the VPS.
+- Container runs as a non-root user; `docker-compose.yml` gained a healthcheck; nginx conf uses `http2 on;` and disables proxy buffering so live logs stream.
+
+### Fixed
+- A malformed cookie (e.g. `rw_session=%`) no longer 500s every endpoint (`parseCookies` is now failure-tolerant).
+- `store.read()` no longer writes to disk on reads — unauthenticated `/raw` traffic can't trigger writes or race with saves; legacy scripts get their `rawToken` via a locked boot migration.
+- Deleting a per-VPS run shard now returns 409 while a run on that VPS is active (previously the run kept executing but vanished from the UI); `deleteAllRuns` checks and deletes shard-by-shard.
+- Scheduler no longer retries a failed/`already_running` trigger on every 30s tick within the same cron minute; tick errors are logged instead of swallowed.
+- `index.html` is served `no-cache` (was cached 7 days — redeploys broke the UI until a hard refresh); hashed assets still cache long.
+- `POST /api/scripts` ignores client-supplied `rawToken` (always server-generated).
+- Fleet cascade delete matches exact shard suffixes; schedule updates validate `vpsId`; destination updates validate `type` and port.
+- Frontend: "Run now" on an unsaved new script no longer POSTs to `/api/scripts/null/run` (save-then-run with the returned id); stale-response races on script open and browse dialogs are sequence-guarded; `describeCron` no longer crashes on malformed cron; filter chips use stable keys; hourly cron round-trip keeps the hour; theme is applied before first paint (no dark flash for light-theme users); test-connection buttons use real disabled states.
+
+### Performance
+- **Run output moved to per-run log files** (`data/runs/logs/<script>__<vps>__<runId>.log`). Shard JSON now holds metadata only — run listing and live polling no longer parse/rewrite multi-MB JSON blobs every 500 ms. Existing shards are migrated at boot.
+- Builder script/discord generation is memoized; the monolithic 1,190-line `App.tsx` was decomposed into per-tab views; all inline styles moved into the tokenized stylesheet (this also fixes the media queries that inline styles used to override).
+- `react`/`react-dom` moved to devDependencies — the runtime image installs only `express`.
+
+### Added
+- **Real progress + SSE live logs.** The run card parses actual rclone `--stats` output (%, transferred, speed, ETA, checks) instead of a hardcoded 62% bar, and logs stream over Server-Sent Events (`GET /api/scripts/:id/runs/:runId/events`) instead of 900 ms polling (with fetch fallback).
+- **Dashboard tab** (default view): every script with last-run status/duration and its schedules, fleet online state, destination health, and one-click run.
+- **CodeMirror editor** with bash syntax highlighting for the Script Editor tab (plus copy/download), script search/filter and a Duplicate action in the sidebar.
+- **Config export/import + Settings tab.** `POST /api/export` bundles scripts, schedules, fleet and destinations with secrets re-encrypted under a user passphrase (auth/.secret never included); `POST /api/import` restores them. Settings has change-username/password, "sign out all sessions", scheduler status and theme.
+
 ## [1.0.15] - 2026-08-28
 
 ### Fixed

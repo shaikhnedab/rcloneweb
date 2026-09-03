@@ -169,6 +169,12 @@ export function buildPayload(cfg: Partial<AppConfig>, status: string, opts: { ho
   return payload;
 }
 
+// Placeholders the panel server substitutes with the saved destination's
+// credentials at run/download time (see server/lib/destinations.js injectSecrets).
+export const DEST_PASSWORD_PH = '__RW_DEST_PASSWORD__';
+export const DEST_S3_ACCESS_PH = '__RW_S3_ACCESS_KEY__';
+export const DEST_S3_SECRET_PH = '__RW_S3_SECRET_KEY__';
+
 function buildConfigCreate(cfg: AppConfig): string {
   const t = cfg.dest;
   const emb = cfg.secrets.embed;
@@ -180,21 +186,21 @@ function buildConfigCreate(cfg: AppConfig): string {
     L.push(`  host ${shq(t.host)} user ${shq(t.user)} \\`);
     if (t.port) L.push(`  port ${shq(t.port)} \\`);
     if (t.sftpAuth === 'key') L.push(`  key_file ${shq(t.keyPath)}`);
-    else if (emb) L.push(`  pass "$(_obscure ${shq(cfg.secrets.password)})"`);
+    else if (emb) L.push(`  pass "$(_obscure ${shq(cfg.secrets.password || DEST_PASSWORD_PH)})"`);
     else L.push(`  pass "$(_obscure "$FTP_PASS")"`);
   } else if (t.type === 'ftp') {
     L.push(setupHeader('ftp'));
     L.push(`rclone config create ${shq(t.remoteName)} ftp \\`);
     L.push(`  host ${shq(t.host)} user ${shq(t.user)} \\`);
     if (t.port) L.push(`  port ${shq(t.port)} \\`);
-    if (emb) L.push(`  pass "$(_obscure ${shq(cfg.secrets.password)})"`);
+    if (emb) L.push(`  pass "$(_obscure ${shq(cfg.secrets.password || DEST_PASSWORD_PH)})"`);
     else L.push(`  pass "$(_obscure "$FTP_PASS")"`);
   } else {
     L.push(setupHeader('s3'));
     L.push(`rclone config create ${shq(t.remoteName)} s3 \\`);
     L.push(`  provider ${shq(t.s3Provider)} region ${shq(t.s3Region)} \\`);
     if (t.s3Endpoint) L.push(`  endpoint ${shq(t.s3Endpoint)} \\`);
-    if (emb) L.push(`  access_key_id ${shq(cfg.secrets.s3AccessKey)} secret_access_key ${shq(cfg.secrets.s3SecretKey)} \\`);
+    if (emb) L.push(`  access_key_id ${shq(cfg.secrets.s3AccessKey || DEST_S3_ACCESS_PH)} secret_access_key ${shq(cfg.secrets.s3SecretKey || DEST_S3_SECRET_PH)} \\`);
     else L.push('  access_key_id "$AWS_ACCESS_KEY_ID" secret_access_key "$AWS_SECRET_ACCESS_KEY" \\');
     L.push('  no_check_bucket true');
   }

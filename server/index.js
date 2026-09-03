@@ -3,7 +3,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ensureDataDirs, DATA_DIR } from './lib/paths.js';
-import { reapStaleRuns } from './lib/runs.js';
+import { migrateAndReap } from './lib/runs.js';
+import { migrateRawTokens } from './lib/store.js';
 import apiRouter from './routes/api.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,16 +42,28 @@ app.use((req, res, next) => {
 // Mount API + raw routes (raw is inside apiRouter)
 app.use(apiRouter);
 
-// Serve built frontend when available
+// Serve built frontend when available. Hashed assets cache for a week, but
+// index.html must always revalidate — a stale index referencing removed
+// chunks breaks the UI until a hard refresh.
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir, { maxAge: '7d', etag: true }));
+  app.use(express.static(distDir, {
+    index: false,
+    maxAge: '7d',
+    etag: true,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
   // SPA fallback for non-file, non-api, non-raw routes
   app.get(/.*/, (req, res) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/raw/') || req.path.startsWith('/i/')) {
       return res.status(404).json({ error: 'not found' });
     }
     const index = path.join(distDir, 'index.html');
-    if (fs.existsSync(index)) return res.sendFile(index);
+    if (fs.existsSync(index)) {
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.sendFile(index);
+    }
     res.status(404).send('Not built yet — run npm run build');
   });
 } else {
@@ -66,14 +79,17 @@ if (fs.existsSync(distDir)) {
 const PORT = Number(process.env.PORT || 8765);
 const HOST = process.env.HOST || '127.0.0.1';
 
-await reapStaleRuns().catch((e) => console.error('[reap]', e.message));
+await migrateAndReap().catch((e) => console.error('[runs migrate/reap]', e.message));
+await migrateRawTokens().catch((e) => console.error('[store migrate]', e.message));
 
-// In-process scheduler tick every 30s (more responsive than old 60s)
+// In-process scheduler tick every 5s — keeps schedule start times within
+// seconds of the configured minute (the old 30s tick made runs start late).
+const schedulerMod = await import('./lib/scheduler.js');
 setInterval(() => {
-  import('./lib/scheduler.js').then((m) => m.triggerDueSchedules().then((t) => {
+  schedulerMod.triggerDueSchedules().then((t) => {
     if (t.length) console.log(`[scheduler] triggered ${t.length} job(s)`);
-  }).catch(() => {}));
-}, 30_000);
+  }).catch((e) => console.error('[scheduler] tick failed:', e?.message || e));
+}, 5_000).unref();
 
 app.listen(PORT, HOST, () => {
   console.log(`rcloneweb v2 listening on http://${HOST}:${PORT}`);
