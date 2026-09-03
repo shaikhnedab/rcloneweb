@@ -11,6 +11,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const distDir = path.join(root, 'dist');
 
+// App version for the startup banner (package.json is always present,
+// including inside the Docker image; VERSION file is the fallback).
+function appVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    if (pkg && typeof pkg.version === 'string' && pkg.version) return pkg.version;
+  } catch {}
+  try {
+    const v = fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
+    if (v) return v;
+  } catch {}
+  return 'dev';
+}
+const APP_VERSION = appVersion();
+
 ensureDataDirs();
 // Fresh data: ensure .gitkeep files exist so data subdirs are kept in git if needed
 for (const sub of ['scripts', 'runs', 'fleet', 'destinations', 'schedules']) {
@@ -92,7 +107,7 @@ setInterval(() => {
 }, 5_000).unref();
 
 app.listen(PORT, HOST, () => {
-  console.log(`rcloneweb v2 listening on http://${HOST}:${PORT}`);
+  console.log(`rcloneweb v${APP_VERSION} listening on http://${HOST}:${PORT}`);
   console.log(`data dir: ${DATA_DIR}`);
   if (!fs.existsSync(distDir)) console.log('hint: frontend not built — run `npm run build` or `npm run dev`');
 });
