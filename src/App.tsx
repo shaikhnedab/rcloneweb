@@ -390,6 +390,8 @@ export default function App() {
   }
 
   const activeTabId = !selectedId && !doc && !['dashboard', 'settings'].includes(tab) ? 'dashboard' : tab;
+  // A draft ('__new__') counts as open — same as before, when any doc rendered the editor branch.
+  const scriptOpen = Boolean(doc);
   const dirtyLabel = dirty ? 'Unsaved changes' : selectedId ? 'Saved' : '';
 
   const openCreateVps = () => setVpsDlg('new');
@@ -423,15 +425,7 @@ export default function App() {
       />
 
       <main className="main" id="main">
-        {!selectedId && !doc && activeTabId !== 'settings' ? (
-          <DashboardTab
-            scripts={scripts}
-            fleet={fleet}
-            dests={dests}
-            onOpenScript={(id, t) => openDoc(id, t)}
-            onRunScript={runFromDashboard}
-          />
-        ) : (
+        {scriptOpen ? (
           <>
             <header className="topbar">
               <input
@@ -455,19 +449,28 @@ export default function App() {
                 )}
               </span>
             </header>
+          </>
+        ) : (
+          activeTabId === 'settings' ? <h2 className="page-head">Settings</h2> : null
+        )}
 
-            <FluidTabs
-              variant="underline"
-              ariaLabel="Script views"
-              value={activeTabId}
-              onValueChange={(v) => setTab(v as T.Tab)}
-              className="sona-tabs"
-              activeIndicatorClassName="sona-tab-indicator"
-              tabs={TABS.map((t) => ({
-                value: t.id,
-                title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
-              }))}
-            />
+        <div className="tab-strip">
+          <FluidTabs
+            variant="underline"
+            size="sm"
+            ariaLabel="Script views"
+            value={activeTabId}
+            onValueChange={(v) => setTab(v as T.Tab)}
+            className="sona-tabs"
+            listClassName="sona-tab-list"
+            activeIndicatorClassName="sona-tab-indicator"
+            tabs={TABS.map((t) => ({
+              value: t.id,
+              title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
+              disabled: !scriptOpen && t.id !== 'dashboard' && t.id !== 'settings',
+            }))}
+          />
+        </div>
 
             <section className="tab-body" role="tabpanel" key={activeTabId}>
               {activeTabId === 'dashboard' && (
@@ -527,8 +530,6 @@ export default function App() {
                 />
               )}
             </section>
-          </>
-        )}
 
         {loadError && (
           <div className="load-error">
