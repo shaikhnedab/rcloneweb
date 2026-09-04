@@ -268,8 +268,8 @@ button { background: none; border: none; padding: 0; font: inherit; color: inher
    like the old tab strip. The hairline under the strip replaces the old
    .tabs bottom border. */
 .tab-strip { border-bottom: 1px solid var(--border); margin-bottom: 20px; }
-.sona-tab-list { gap: 2px; padding: 0; }
-.sona-tabs [role="tab"] { background: transparent; border: none; box-shadow: none; border-radius: 0; }
+.sona-tab-list { gap: 6px 22px; padding: 2px 4px; }
+.sona-tabs [role="tab"] { background: transparent; border: none; box-shadow: none; border-radius: 0; padding-left: 14px; padding-right: 14px; }
 .sona-tabs [data-active] { color: var(--primary); }
 .sona-tab-indicator { background: var(--primary); }
 .page-head { font-size: 19px; font-weight: 700; margin: 2px 0 14px; letter-spacing: -0.015em; }

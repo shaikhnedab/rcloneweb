@@ -123,7 +123,7 @@ export default function App() {
     } catch (e) { toast((e as Error).message, true); }
   }, [dirty, dialog, applyDoc]);
 
-  const newDoc = useCallback(async () => {
+  const newDoc = useCallback(async (targetTab: T.Tab = 'builder') => {
     if (dirty) {
       const ok = await dialog.confirm('Unsaved changes', 'Discard?', 'Discard', true);
       if (!ok) return;
@@ -142,8 +142,19 @@ export default function App() {
       manualEdited: false,
     });
     setDirty(true);
-    setTab('builder');
+    setTab(targetTab);
   }, [dirty, dialog, applyDoc]);
+
+  // Every tab is always clickable: script tabs with no open script first
+  // open a fresh draft, so navigation never dead-ends (previously the panel
+  // guard bounced to a dashboard with no tab bar at all).
+  const gotoTab = useCallback(async (v: T.Tab) => {
+    if (!doc && v !== 'dashboard' && v !== 'settings') {
+      await newDoc(v);
+      return;
+    }
+    setTab(v);
+  }, [doc, newDoc]);
 
   const saveDoc = useCallback(async (): Promise<string | null> => {
     if (!sourceVpsId) { toast('Select a Source VPS in the Builder first', true); setTab('builder'); return null; }
@@ -455,21 +466,20 @@ export default function App() {
         )}
 
         <div className="tab-strip">
-          <FluidTabs
-            variant="underline"
-            size="sm"
-            ariaLabel="Script views"
-            value={activeTabId}
-            onValueChange={(v) => setTab(v as T.Tab)}
-            className="sona-tabs"
-            listClassName="sona-tab-list"
-            activeIndicatorClassName="sona-tab-indicator"
-            tabs={TABS.map((t) => ({
-              value: t.id,
-              title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
-              disabled: !scriptOpen && t.id !== 'dashboard' && t.id !== 'settings',
-            }))}
-          />
+            <FluidTabs
+              variant="underline"
+              size="sm"
+              ariaLabel="Script views"
+              value={activeTabId}
+              onValueChange={(v) => gotoTab(v as T.Tab)}
+              className="sona-tabs"
+              listClassName="sona-tab-list"
+              activeIndicatorClassName="sona-tab-indicator"
+              tabs={TABS.map((t) => ({
+                value: t.id,
+                title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
+              }))}
+            />
         </div>
 
             <section className="tab-body" role="tabpanel" key={activeTabId}>
