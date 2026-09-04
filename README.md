@@ -5,7 +5,7 @@ Beautiful rclone backup panel — rebuilt from scratch in **Node.js 22 + Express
 > **This is a complete rewrite** of the PHP version. All original features are preserved, every reported bug is fixed, and modern security defaults are applied. The PHP source is kept untouched in [`legacy/`](legacy/) for reference.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.1.1-00E5CC?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/version-2.1.2-00E5CC?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Node-22-339933?style=for-the-badge&logo=node.js" />
   <img src="https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" />
@@ -25,6 +25,7 @@ Build, store, schedule and run **rclone** backup scripts from a modern UI — wi
 | **⏰ Schedule** | In-panel cron builder (Every N min / hourly / daily / weekly / monthly / custom), timezone-aware, in-process scheduler + `cron` CLI |
 | **🔐 Auth** | First-run setup, stateless HMAC session (30d, `HttpOnly` `SameSite=Lax`), `scrypt` hashing, rate-limited login, **account reset without data loss** |
 | **🎨 Theme** | Dark-first "Fleet Pipeline" design, light theme, responsive, keyboard-accessible |
+| **✨ UI** | Sona UI primitives (animated tabs/dialogs/switches/buttons) on our own tokens — no visual framework lock-in |
 | **🏠 Dashboard** | Every script's last run + next schedules, fleet/destination health, one-click run |
 | **📜 Editor** | CodeMirror bash editor with syntax highlighting, script search + duplicate |
 | **💾 Export/Import** | One-file config bundle; secrets re-encrypted under your passphrase |
@@ -54,7 +55,7 @@ docker compose down
 # Reset password (keeps data)
 docker compose exec rcloneweb node server/cli.js reset-password
 
-# Cron — not needed separately: the container's in-process scheduler ticks every 30s
+# Cron — not needed separately: the container's in-process scheduler ticks every 5s
 # even when your browser is closed (as long as the container is up). For extra safety
 # you can also add a host cron that triggers the container:
 # * * * * * docker compose exec rcloneweb node server/cli.js cron >> /var/log/rcloneweb-cron.log 2>&1
@@ -71,10 +72,10 @@ docker compose up -d --build
 
 ```bash
 # Pull the latest Alpine image from GHCR (built on every tag v* and main)
-docker pull ghcr.io/your-org/rcloneweb:latest
-# Use it in docker-compose.yml: image: ghcr.io/your-org/rcloneweb:latest (no build:)
+docker pull ghcr.io/shaikhnedab/rcloneweb:latest
+# Use it in docker-compose.yml: image: ghcr.io/shaikhnedab/rcloneweb:latest (no build:)
 # Or run directly:
-docker run -d -p 8765:8765 -v rcloneweb-data:/app/data --name rcloneweb ghcr.io/your-org/rcloneweb:latest
+docker run -d -p 8765:8765 -v rcloneweb-data:/app/data --name rcloneweb ghcr.io/shaikhnedab/rcloneweb:latest
 ```
 
 **Data persistence:**
@@ -92,7 +93,7 @@ git pull && docker compose up -d --build
 
 ```bash
 # 1. Clone
-git clone https://github.com/your/rcloneweb .
+git clone https://github.com/shaikhnedab/rcloneweb .
 # (legacy PHP kept in ./legacy/ — not used)
 
 # 2. Node 22
@@ -126,7 +127,7 @@ npm run dev
 
 ### System cron — will it run if I close the browser?
 
-**Yes, as long as the server/container is up.** The Node server has an in-process scheduler that ticks every **30s** (even with no browser open) and triggers due cron jobs. The browser also ticks every 30s while open, but it’s not required.
+**Yes, as long as the server/container is up.** The Node server has an in-process scheduler that ticks every **5s** (even with no browser open) and triggers due cron jobs. The browser also ticks every 30s while open, but it’s not required.
 
 Host cron is **optional** — only needed if you stop the Node server/container when not using the panel. If you keep `docker compose up -d` or `npm start` running, schedules will fire on time.
 
@@ -184,7 +185,8 @@ server {
     return 301 https://$host$request_uri;
 }
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name panel.example.com;
 
     ssl_certificate /etc/letsencrypt/live/panel.example.com/fullchain.pem;
@@ -281,11 +283,12 @@ server/          # Node backend (Express)
   cli.js         # reset-password + cron
   lib/           # auth, crypto, store, fleet, destinations, runs, ssh, rclone, browse, ...
   routes/api.js  # all endpoints
-src/             # React frontend (Vite + TS)
-  App.tsx        # auth, sidebar, all tabs
+src/             # React frontend (Vite + TS + Tailwind v4)
+  App.tsx        # auth gate, tab shell, dialogs
+  views/         # Dashboard, Builder, Run, Schedule, Sidebar, dialogs, …
+  components/ui/ # Sona UI primitives (tabs, dialog, switch, button, …)
   lib/generator.ts  # bash generator (wired webhook templates)
-  lib/cron.tsx   # cron builder component
-  styles/style.css
+  styles/style.css  # Fleet Pipeline tokens + layout (Sona tokens bridged in sona.css)
 dist/            # built frontend (gitignored, served by server)
 data/            # runtime data (gitignored, fresh on first boot)
 legacy/          # original PHP source (preserved)
