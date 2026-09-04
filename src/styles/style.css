@@ -479,6 +479,9 @@ button { background: none; border: none; padding: 0; font: inherit; color: inher
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;
 }
+/* SpotlightCard wraps content in a structural div — carry the stacked
+   layout through it so number sits above label. */
+.stat-card > div:last-child { display: flex; flex-direction: column; gap: 6px; }
 .stat-num { font-family: var(--font-display); font-size: 30px; font-weight: 700; line-height: 1; color: var(--primary); font-variant-numeric: tabular-nums; }
 .stat-dim { color: var(--muted); font-size: 18px; font-weight: 600; }
 .stat-label { display: inline-flex; gap: 7px; align-items: center; color: var(--muted); font-size: 12px; font-weight: 600; }
