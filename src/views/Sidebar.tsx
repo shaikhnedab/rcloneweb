@@ -87,7 +87,7 @@ export function Sidebar(p: Props) {
           : p.dests.map((d) => (
             <div key={d.id} className={`side-item ${p.pickedDestId === d.id ? 'picked' : ''}`}>
               <span className={`dot ${d.lastSeen ? 'dot-ok' : 'dot-off'}`} title={d.lastSeen ? `Last seen ${timeAgo(d.lastSeen)}` : 'Never tested'} />
-              <button className="side-name" title={d.type === 's3' ? d.s3Bucket : d.host} onClick={() => p.onPickDest(d)}>
+              <button className="side-name" title={d.type === 's3' ? d.s3Bucket : d.host} onClick={() => p.onEditDest(d)}>
                 <span className="side-type">{d.type}</span> {d.name}
               </button>
               <span className="side-actions">

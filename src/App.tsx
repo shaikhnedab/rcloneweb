@@ -475,7 +475,7 @@ export default function App() {
               className="sona-tabs"
               listClassName="sona-tab-list"
               activeIndicatorClassName="sona-tab-indicator"
-              tabs={TABS.map((t) => ({
+              tabs={(scriptOpen ? TABS : TABS.filter((t) => t.id === 'dashboard')).map((t) => ({
                 value: t.id,
                 title: (<span className="tab-title"><Icon name={t.icon} size={13} /> {t.label}</span>),
               }))}
