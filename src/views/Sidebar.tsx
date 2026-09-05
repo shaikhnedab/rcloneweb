@@ -23,6 +23,7 @@ interface Props {
   pickedDestId: string | null;
   onAccount: () => void;
   onLogout: () => void;
+  onHome: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
 }
@@ -36,8 +37,13 @@ export function Sidebar(p: Props) {
     <FluidTooltipGroup orientation="vertical">
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-logo"><Icon name="box" size={18} /></span>
-        <span className="brand-name">rcloneweb</span>
+      <Tip id="tip-home" label="Go to dashboard" side="right">
+        <button className="brand-home" aria-label="Go to dashboard" onClick={p.onHome}>
+          <span className="brand-logo"><Icon name="box" size={18} /></span>
+          <span className="brand-name">rcloneweb</span>
+        </button>
+      </Tip>
+      <div className="brand-actions">
         <Tip id="tip-account" label={p.username ? `Signed in as ${p.username}` : 'Account settings'} side="right">
           <button className="icon-btn" title={p.username ? `Signed in as ${p.username}` : 'Account'} aria-label="Account settings" onClick={p.onAccount}>
             <Icon name="settings" size={15} />
@@ -48,6 +54,7 @@ export function Sidebar(p: Props) {
             <Icon name="logout" size={15} />
           </button>
         </Tip>
+      </div>
       </div>
 
       <button className="btn filled block" onClick={p.onNewScript}><Icon name="plus" size={14} /> New script</button>

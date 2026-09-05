@@ -99,6 +99,9 @@ a { color: var(--primary); }
   display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 10px;
 }
 .brand { display: flex; align-items: center; gap: 9px; padding: 2px 4px 8px; }
+.brand-home { display: flex; align-items: center; gap: 9px; padding: 0; background: none; border: none; cursor: pointer; font: inherit; color: inherit; text-align: left; flex: 1; min-width: 0; border-radius: 8px; }
+.brand-home:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.brand-actions { display: flex; align-items: center; gap: 2px; }
 .brand-logo {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
   background: linear-gradient(135deg, var(--primary), #0aa2c0); color: var(--on-primary);

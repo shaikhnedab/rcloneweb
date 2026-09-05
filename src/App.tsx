@@ -432,6 +432,7 @@ export default function App() {
         onPickDest={(d) => { setDestFleetId(d.id); if (doc) setDirty(true); toast(`Destination preset: ${d.name}`); }}
         pickedDestId={destFleetId}
         onAccount={() => setTab('settings')}
+        onHome={() => setTab('dashboard')}
         onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }); applyDoc(null); await refreshAuth(); }}
       />
 
