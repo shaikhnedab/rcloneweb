@@ -4,7 +4,6 @@ import type { FleetItem, RunRec } from '../lib/types';
 import { compactView, downloadText, elapsedSince, fmtBytes, parseRunStats } from '../lib/format';
 import { Icon, Spinner, toast } from '../lib/ui';
 import { Button } from '../components/ui/button';
-import ExpandingAction from '../components/ui/expanding-action/expanding-action';
 
 interface Props {
   scriptId: string | null;
@@ -267,23 +266,14 @@ export function RunTab(p: Props) {
                 <span className="run-when">{r.vpsName} · {new Date(r.startedAt).toLocaleString()}{r.finishedAt ? ` · ${r.exitCode} · ${elapsedSince(r.startedAt, r.finishedAt)}` : ' · running…'}</span>
               </button>
               <span className="run-item-actions">
-                <ExpandingAction
-                  trigger="Actions"
-                  backLabel="Back to run actions"
-                  triggerClassName="run-expander"
-                  onValueSelect={(v) => {
-                    if (v === 'view') viewLog(r);
-                    else if (v === 'copy') copyLog(r);
-                    else if (v === 'download') downloadLog(r);
-                    else if (v === 'delete') deleteLog(r);
-                  }}
-                  items={[
-                    { value: 'view', label: (<span className="exp-option"><Icon name="eye" size={13} /> View</span>) },
-                    { value: 'copy', label: (<span className="exp-option"><Icon name="copy" size={13} /> Copy</span>) },
-                    { value: 'download', label: (<span className="exp-option"><Icon name="download" size={13} /> Download</span>) },
-                    { value: 'delete', label: (<span className="exp-option danger-text"><Icon name="trash" size={13} /> Delete</span>), disabled: !r.finishedAt },
-                  ]}
-                />
+                <button className="btn ghost small" onClick={() => viewLog(r)}><Icon name="eye" size={13} /> View</button>
+                <button className="btn ghost small" onClick={() => copyLog(r)}><Icon name="copy" size={13} /> Copy</button>
+                <button className="btn ghost small" onClick={() => downloadLog(r)}><Icon name="download" size={13} /> Download</button>
+                <button
+                  className="btn ghost small danger-text" disabled={!r.finishedAt}
+                  title={r.finishedAt ? 'Delete run' : 'Stop the run first — only finished logs can be deleted'}
+                  onClick={() => deleteLog(r)}
+                ><Icon name="trash" size={13} /> Delete</button>
               </span>
             </div>
           ))}

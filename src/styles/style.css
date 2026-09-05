@@ -431,7 +431,7 @@ button { background: none; border: none; padding: 0; font: inherit; color: inher
   background: none; border: none; cursor: pointer; color: var(--text); font: inherit; padding: 0; text-align: left;
 }
 .run-when { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-item-actions { display: flex; gap: 4px; }
+.run-item-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
 /* ---------- schedule ---------- */
 .nowbar {
@@ -470,8 +470,6 @@ button { background: none; border: none; padding: 0; font: inherit; color: inher
 .sched-summary { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .sched-detail { display: flex; gap: 12px; flex-wrap: wrap; margin: 2px 0 10px; }
 .sched-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.run-expander { height: 30px !important; min-height: 30px !important; padding-top: 0 !important; padding-bottom: 0 !important; font-size: 12px; }
-.exp-option { display: inline-flex; align-items: center; gap: 7px; }
 
 /* ---------- dashboard ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 8px; }
